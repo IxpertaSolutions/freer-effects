@@ -1,5 +1,5 @@
 name:                freer
-version:             0.2.2.5
+version:             0.2.2.6
 synopsis:            Implementation of the Freer Monad
 license:             BSD3
 license-file:        LICENSE
