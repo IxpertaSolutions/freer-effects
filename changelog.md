@@ -1,3 +1,7 @@
+# 0.2.4.0 (Sep. 7, 2016)
+
+* Switch to another `Data.Open.Union` implementation which has constant-time injection/projection.
+
 # 0.2.3.0 (June 25, 2016)
 
 * Add GHC 8 support

@@ -6,6 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, FlexibleContexts #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE MagicHash #-}
 
 {-|
 Module      : Data.Open.Union
@@ -16,18 +17,9 @@ Maintainer  : cpp.cabrera@gmail.com
 Stability   : experimental
 Portability : POSIX
 
-This implementation relies on _closed_ type families added to GHC
-7.8. It has NO overlapping instances and NO Typeable. Alas, the
-absence of Typeable means the projections and injections generally
-take linear time.  The code illustrate how to use closed type families
-to disambiguate otherwise overlapping instances.
+This implementation relies on _closed_ type families added to GHC 7.8. It has NO overlapping instances and NO Typeable. This version preserves constant-time injection/projection by emulating Typeable.
 
-The data constructors of Union are not exported. Essentially, the
-nested Either data type.
-
-Using <http://okmij.org/ftp/Haskell/extensible/OpenUnion41.hs> as a
-starting point.
-
+Using <http://okmij.org/ftp/Haskell/extensible/OpenUnion5.hs> as a starting point.
 -}
 
 module Data.Open.Union (
@@ -39,64 +31,36 @@ module Data.Open.Union (
 ) where
 
 import GHC.Exts
+import GHC.TypeLits
+import Unsafe.Coerce
 
---------------------------------------------------------------------------------
-                           -- Interface --
---------------------------------------------------------------------------------
-data Union (r :: [ * -> * ]) v where
-  UNow  :: t v -> Union (t ': r) v
-  UNext :: Union r v -> Union (any ': r) v
+data Union :: [* -> *] -> * -> * where
+    Union :: !Int -> Any -> Union r v
 
 {-# INLINE decomp #-}
 decomp :: Union (t ': r) v -> Either (Union r v) (t v)
-decomp (UNow x)  = Right x
-decomp (UNext v) = Left v
+decomp (Union 0 v) = Right $ unsafeCoerce v
+decomp (Union n v) = Left $ Union (n - 1) v
 
 {-# INLINE weaken #-}
-weaken :: Union r w -> Union (any ': r) w
-weaken = UNext
+weaken :: Union r v -> Union (any ': r) v
+weaken (Union n v) = Union (n + 1) v
 
-class (Member' t r (FindElem t r)) => Member t r where
-  inj :: t v -> Union r v
-  prj :: Union r v -> Maybe (t v)
+class KnownNat (FindElem t r) => Member t r where
+    inj :: t v -> Union r v
+    prj :: Union r v -> Maybe (t v)
 
-instance (Member' t r (FindElem t r)) => Member t r where
-  inj = inj' (P :: P (FindElem t r))
-  prj = prj' (P :: P (FindElem t r))
+instance KnownNat (FindElem t r) => Member t r where
+    {-# INLINE inj #-}
+    inj v = Union (fromInteger $ natVal' (proxy# :: Proxy# (FindElem t r))) (unsafeCoerce v)
+
+    {-# INLINE prj #-}
+    prj (Union i v) = if fromInteger (natVal' (proxy# :: Proxy# (FindElem t r))) == i then Just $ unsafeCoerce v else Nothing
+
+type family FindElem t r where
+    FindElem t (t ': _) = 0
+    FindElem t (_ ': r) = 1 + FindElem t r
 
 type family Members m r :: Constraint where
   Members (t ': c) r = (Member t r, Members c r)
   Members '[] r = ()
-
---------------------------------------------------------------------------------
-                         -- Implementation --
---------------------------------------------------------------------------------
-data Nat = S Nat | Z
-data P (n :: Nat) = P
-
--- injecting/projecting at a specified position P n
-class Member' t r (n :: Nat) where
-  inj' :: P n -> t v -> Union r v
-  prj' :: P n -> Union r v -> Maybe (t v)
-
-instance (r ~ (t ': r')) => Member' t r 'Z where
-  inj' _ = UNow
-  prj' _ (UNow x) = Just x
-  prj' _ _        = Nothing
-
-instance (r ~ (t' ': r'), Member' t r' n) => Member' t r ('S n) where
-  inj' _ = UNext . inj' (P::P n)
-  prj' _ (UNow _)  = Nothing
-  prj' _ (UNext x) = prj' (P::P n) x
-
--- Find an index of an element in a `list'
--- The element must exist
--- This closed type family disambiguates otherwise overlapping
--- instances
-type family FindElem (t :: * -> *) r :: Nat where
-  FindElem t (t ': r)    = 'Z
-  FindElem t (any ': r)  = 'S (FindElem t r)
-
-type family EQU (a :: k) (b :: k) :: Bool where
-  EQU a a = 'True
-  EQU a b = 'False
