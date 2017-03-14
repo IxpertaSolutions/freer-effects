@@ -4,6 +4,7 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
+
 -- |
 -- Module:       Control.Monad.Freer.Reader
 -- Description:  Reader effects, for encapsulating an environment.
@@ -17,6 +18,7 @@
 -- environment with immutable state for interpreters.
 --
 -- Using <http://okmij.org/ftp/Haskell/extensible/Eff1.hs> as a starting point.
+
 module Control.Monad.Freer.Reader
     (
     -- * Reader Effect
@@ -29,6 +31,7 @@ module Control.Monad.Freer.Reader
 
     -- * Reader Handlers
     , runReader
+    , runReader'
 
     -- * Example 1: Simple Reader Usage
     -- $simpleReaderExample
@@ -40,6 +43,7 @@ module Control.Monad.Freer.Reader
 
 import Control.Applicative (pure)
 import Data.Functor ((<$>))
+import Prelude (flip)
 
 import Control.Monad.Freer.Internal
     ( Arr
@@ -49,7 +53,6 @@ import Control.Monad.Freer.Internal
     , interpose
     , send
     )
-
 
 -- | Represents shared immutable environment of type @(e :: *)@ which is made
 -- available to effectful computation.
@@ -72,6 +75,17 @@ asks f = f <$> ask
 -- | Handler for 'Reader' effects.
 runReader :: Eff (Reader e ': effs) a -> e -> Eff effs a
 runReader m e = handleRelay pure (\Reader k -> k e) m
+
+-- | `runReader` with the arguments flipped. May be more convenient for
+-- chaining `run*` commands together.
+--
+-- @
+-- eff :: (Member (Reader Env) effs, Member (Writer String) effs) => Eff effs ()
+--
+-- foo :: ((), String)
+-- foo = run . runReader env $ runWriter eff
+runReader' :: e -> Eff (Reader e ': effs) a -> Eff effs a
+runReader' = flip runReader
 
 -- | Locally rebind the value in the dynamic environment.
 --
