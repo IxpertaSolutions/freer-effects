@@ -31,7 +31,6 @@ module Control.Monad.Freer.Reader
 
     -- * Reader Handlers
     , runReader
-    , runReader'
 
     -- * Example 1: Simple Reader Usage
     -- $simpleReaderExample
@@ -43,7 +42,6 @@ module Control.Monad.Freer.Reader
 
 import Control.Applicative (pure)
 import Data.Functor ((<$>))
-import Prelude (flip)
 
 import Control.Monad.Freer.Internal
     ( Arr
@@ -73,19 +71,32 @@ asks
 asks f = f <$> ask
 
 -- | Handler for 'Reader' effects.
-runReader :: Eff (Reader e ': effs) a -> e -> Eff effs a
-runReader m e = handleRelay pure (\Reader k -> k e) m
-
--- | `runReader` with the arguments flipped. May be more convenient for
--- chaining `run*` commands together.
+--
+-- ==== __Examples__
+-- Simple usage:
+--
+-- @
+-- data Env
+--
+-- -- | IO effects with a read-only environment.
+-- eff :: (Member IO effs, Member (Reader Env) effs) => Eff effs ()
+--
+-- main :: IO ()
+-- main = runM $ runReader eff env
+--   where env = ...
+-- @
+--
+-- Use `flip` for cleaner chaining of @run*@ functions:
 --
 -- @
 -- eff :: (Member (Reader Env) effs, Member (Writer String) effs) => Eff effs ()
 --
 -- foo :: ((), String)
--- foo = run . runReader env $ runWriter eff
-runReader' :: e -> Eff (Reader e ': effs) a -> Eff effs a
-runReader' = flip runReader
+-- foo = run . flip runReader env $ runWriter eff
+--   where env = ...
+-- @
+runReader :: Eff (Reader e ': effs) a -> e -> Eff effs a
+runReader m e = handleRelay pure (\Reader k -> k e) m
 
 -- | Locally rebind the value in the dynamic environment.
 --
