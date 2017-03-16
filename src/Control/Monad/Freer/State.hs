@@ -86,6 +86,26 @@ modify :: Member (State s) effs => (s -> s) -> Eff effs ()
 modify f = fmap f get >>= put
 
 -- | Handler for 'State' effects.
+--
+-- ==== __Examples__
+--
+-- Multiple `State`s at the same time:
+--
+-- @
+-- eff :: (Member (State Int) effs, Member (State Bool) effs) => Eff effs ()
+--
+-- foo :: (((), Bool), Int)
+-- foo = run $ runState (runState eff True) 0
+-- @
+--
+-- Use `flip` for cleaner chaining of @run*@ functions:
+--
+-- @
+-- eff :: (Member (State Int) effs, Member (Writer String) effs) => Eff effs ()
+--
+-- foo :: (((), String), Int)
+-- foo = run . flip runState 0 $ runWriter eff
+-- @
 runState :: Eff (State s ': effs) a -> s -> Eff effs (a, s)
 runState (Val x) s = return (x, s)
 runState (E u q) s = case decomp u of
