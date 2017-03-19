@@ -129,6 +129,9 @@ freeVarName _ = Nothing
 foldArrows :: [Type] -> Type
 foldArrows = foldr1 (AppT . AppT ArrowT)
 
+
+------------------------------------------------------------------------------
+-- | Unfolds a type into any types which were applied together.
 unapply :: Type -> [Type]
 unapply (AppT a b) = unapply a ++ unapply b
 unapply a = [a]
