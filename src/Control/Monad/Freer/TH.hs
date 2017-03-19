@@ -17,6 +17,7 @@ import Control.Monad                (forM, join)
 import Debug.Trace
 import Data.Char (toLower)
 import Control.Monad.Freer (send, Member, Eff)
+import Data.Maybe (mapMaybe)
 
 overFirst :: (a -> a) -> [a] -> [a]
 overFirst f (a:as) = f a : as
@@ -30,11 +31,13 @@ liftInst cls = do
     x -> error $ show x
 
 buildInstance :: Name -> Dec -> Q [Dec]
-buildInstance t (DataD _ name _ _ cons _) = do
+buildInstance t (DataD _ name ts _ cons _) = do
   -- (h, clsTypeVars, dTypeVars) <- instanceHead name t
   -- let m = last dTypeVars
-  dec <- mapM (liftedFuncDecl t) cons
-  return $ join dec
+  dec <- mapM liftedFuncDecl cons
+  sig <- mapM (generateSig t ts) cons
+  return $ join dec ++ join sig
+
   -- return $ InstanceD Nothing [ AppT (ConT ''Monad) $ VarT m
   --                            , AppT (foldTypeApp name clsTypeVars) $ VarT m
   --                            ] h dec
@@ -45,64 +48,61 @@ buildInstance _ x = error $ "tried to build an instance for something that wasn'
 -- | Builds a function definition of the form
 --
 -- > x a b c = lift $ x a b c
-liftedFuncDecl :: Name -> Con -> Q [Dec]
-liftedFuncDecl t (ForallC _ _ con) = liftedFuncDecl t con
-liftedFuncDecl t (GadtC [name] ts _) = do
+liftedFuncDecl :: Con -> Q [Dec]
+liftedFuncDecl (ForallC _ _ con) = liftedFuncDecl con
+liftedFuncDecl (GadtC [name] ts _) = do
   let name' = mkName . overFirst toLower $ nameBase name
   let arity = length ts - 1
   dTypeVars <- forM [0..arity] $ const $ newName "a"
-  r <- newName "r"
   return [ FunD name'
            . pure
            $ Clause (VarP <$> dTypeVars)
                     (NormalB . AppE (VarE 'send) $ foldl (\b -> AppE b . VarE) (ConE name) dTypeVars)
                     []
-         , SigD name' $ ForallT [PlainTV r] [AppT (AppT (ConT ''Member) (ConT t)) $ VarT r] ((ConT ''Eff) `AppT` VarT r `AppT` (ConT $ tupleTypeName 0))
          ]
-liftedFuncDecl _ x = error $ "class contains something that is not a signature" ++ show x
+liftedFuncDecl x = error $ "class contains something that is not a signature" ++ show x
 
 
-------------------------------------------------------------------------------
--- | Returns all the type variables in a 'Name's declaration.
-getTyVars :: Name -> Q [Name]
-getTyVars name =
-    reify name >>= return . \case
-      ClassI dec _ -> get dec
-      TyConI dec   -> get dec
-      _            -> []
-  where
-    get (DataD    _ _ xs _ _ _) = rip <$> xs
-    get (NewtypeD _ _ xs _ _ _) = rip <$> xs
-    get (ClassD _ _ xs _ _)     = rip <$> xs
-    get _                       = []
+generateSig :: Name -> [TyVarBndr] -> Con -> Q [Dec]
+generateSig eff tvs (ForallC _ _ con) = generateSig eff tvs con
+generateSig eff tvs (GadtC [name] ts c) = do
+  let tvs' = init $ fmap unkinded tvs
+  r <- newName "r"
+  let name' = mkName . overFirst toLower $ nameBase name
+  let ts' = fmap snd ts
+      c' = unapp c
+      tt = arrows $ ts' ++ [ConT ''Eff `AppT` VarT r `AppT` last c']
+  return . pure
+         . SigD name'
+         . ForallT (PlainTV r : (fmap PlainTV $ mapMaybe isFree ts'))
+                   [AppT (AppT (ConT ''Member) (head c')) $ VarT r]
+         $ tt
 
-    rip (PlainTV n)    = n
-    rip (KindedTV n _) = n
+  -- HowHow :: Int -> Bool -> s -> MyEffect s s
+
+isFree :: Type -> Maybe Name
+isFree (VarT n) = Just n
+isFree _ = Nothing
+
+unkinded :: TyVarBndr -> Name
+unkinded (PlainTV n) = n
+unkinded _ = error "bad!"
+
+unapp :: Type -> [Type]
+unapp (AppT a b) = a : unapp b
+unapp x = [x]
 
 
-------------------------------------------------------------------------------
--- | Builds an "instance head". Eg:
---
--- > instanceHead ''Monad ''ReaderT
---
--- builds
---
--- > (Monad (ReaderT s m)) =>
-instanceHead :: Name -> Name -> Q (Type, [Name], [Name])
-instanceHead cls d = do
-  clsTypeVars <- init <$> getTyVars cls
-  dTypeVars   <- init <$> getTyVars d
-  return $ ( AppT (foldTypeApp cls clsTypeVars) $ foldTypeApp d dTypeVars
-           , clsTypeVars
-           , dTypeVars
-           )
+arrows :: [Type] -> Type
+arrows = foldr1 (AppT . AppT ArrowT)
+
 
 
 ------------------------------------------------------------------------------
 -- | Given a 'Name' and a list of 'Name's, treads the first as a constructor,
 -- and applies the remainder as type variables to it. Left associative.
-foldTypeApp :: Name -> [Name] -> Type
-foldTypeApp n = foldl (\b -> AppT b . VarT) (ConT n)
+foldTypeApp :: Name -> [Type] -> Type
+foldTypeApp n = foldl (\b -> AppT b) (ConT n)
 
 
 ------------------------------------------------------------------------------
