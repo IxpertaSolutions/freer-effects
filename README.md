@@ -99,6 +99,15 @@ runConsolePure inputs req =
 ```
 
 
+# Combining with Transformers
+
+You already have some [`mtl`](http://hackage.haskell.org/package/mtl) code and
+are afraid that combining effects with your current tranformer stack would not
+be possible? Package
+[`freer-effects-extra`](https://github.com/trskop/freer-effects-extra) has some
+`mtl`-related and other goodies.
+
+
 # Contributing
 
 Contributions are welcome! Documentation, examples, code, and feedback - they

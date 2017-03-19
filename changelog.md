@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+* Introducing `replaceRelay` and `replaceRelayS`.
+  [PR #27](https://github.com/IxpertaSolutions/freer-effects/pull/27)
+  (**new**)
+* Fix: `Control.Monad.forever` causes `<<loop>>`
+  [#23](https://github.com/IxpertaSolutions/freer-effects/issues/23)
+  (**bug-fix**)
+* Switched to hpack format for package description, see [hpack
+  documentation](https://github.com/sol/hpack#readme) for more details.
+  Cabal file is still provided, but it is generated from `package.yaml`.
+  (**change**)
+* Coroutines can now return values when they are done. This affects only the
+  `Done` constructor of `Status` data type.
+  [PR #25](https://github.com/IxpertaSolutions/freer-effects/pull/25)
+  (**breaking-change**)
+* Introduced new handler `interposeC` for `Yield` effect (coroutines), and
+  helper function named `replyC`.
+  [PR #25](https://github.com/IxpertaSolutions/freer-effects/pull/25)
+  (**new**)
+* Introduced `Fresh` effect handlers `runFresh` and `evalFresh`. Function
+  `runFresh'` was deprecated in favour of `evalFresh`.
+  [PR #24](https://github.com/IxpertaSolutions/freer-effects/pull/24)
+  (**new, change**)
+
 ## [0.3.0.0] (March 06, 2017)
 
 * Package renamed to `freer-effects` to distinguish it from original `freer`.
