@@ -1,120 +1,135 @@
-{-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE LambdaCase                        #-}
+{-# LANGUAGE OverloadedStrings                 #-}
+{-# LANGUAGE TemplateHaskell                   #-}
+{-# OPTIONS_GHC -fno-warn-missing-import-lists #-}
 
--- | A collection of TemplateHaskell functions capable of generating the boring
--- @MonadX@ instances for transformer stacks that contain an @X@ somewhere
--- inside.
---
--- These instances can be automatically generated for any class without
--- additional superclass constraints.
+-- | Automatic generation of freer monadic actions.
 module Control.Monad.Freer.TH
-  ( liftInst
+  ( makeFreer
+  , makeFreer_
   ) where
 
-import Language.Haskell.TH
-import Control.Monad                (forM, join)
-import Debug.Trace
-import Data.Char (toLower)
+import Control.Monad (forM, unless)
 import Control.Monad.Freer (send, Member, Eff)
+import Data.Char (toLower)
+import Data.List (nub)
 import Data.Maybe (mapMaybe)
+import Language.Haskell.TH
+import Prelude
 
-overFirst :: (a -> a) -> [a] -> [a]
-overFirst f (a:as) = f a : as
-overFirst _ as     = as
-
-
-liftInst :: Name -> Q [Dec]
-liftInst cls = do
-  reify cls >>= \case
-    TyConI dec -> buildInstance cls dec
-    x -> error $ show x
-
-buildInstance :: Name -> Dec -> Q [Dec]
-buildInstance t (DataD _ name ts _ cons _) = do
-  -- (h, clsTypeVars, dTypeVars) <- instanceHead name t
-  -- let m = last dTypeVars
-  dec <- mapM liftedFuncDecl cons
-  sig <- mapM (generateSig t ts) cons
-  return $ join dec ++ join sig
-
-  -- return $ InstanceD Nothing [ AppT (ConT ''Monad) $ VarT m
-  --                            , AppT (foldTypeApp name clsTypeVars) $ VarT m
-  --                            ] h dec
-buildInstance _ x = error $ "tried to build an instance for something that wasn't a class" ++ show x
 
 
 ------------------------------------------------------------------------------
--- | Builds a function definition of the form
+-- | @$('makeFreer' ''T)@ provides freer monadic actions for the constructors of
+-- the given GADT @T@.
+makeFreer :: Name -> Q [Dec]
+makeFreer = genFreer True
+
+
+------------------------------------------------------------------------------
+-- | Like 'makeFreer', but does not provide type signatures.
+-- This can be used to attach Haddock comments to individual arguments
+-- for each generated function.
 --
--- > x a b c = lift $ x a b c
-liftedFuncDecl :: Con -> Q [Dec]
-liftedFuncDecl (ForallC _ _ con) = liftedFuncDecl con
-liftedFuncDecl (GadtC [name] ts _) = do
-  let name' = mkName . overFirst toLower $ nameBase name
-  let arity = length ts - 1
+-- @
+-- data Lang x where
+--   Output :: String -> Lang x
+--
+-- makeFreer_ 'Lang
+--
+-- -- | Output a string.
+-- output :: Member Lang effs
+--        => String    -- ^ String to output.
+--        -> Eff effs ()  -- ^ No result.
+-- @
+--
+-- 'makeFreer_' must be called *before* the explicit type signatures.
+makeFreer_ :: Name -> Q [Dec]
+makeFreer_ = genFreer False
+
+
+------------------------------------------------------------------------------
+-- | Generates declarations and possibly signatures for functions to lift GADT
+-- constructors into 'Eff' actions.
+genFreer :: Bool -> Name -> Q [Dec]
+genFreer makeSigs tcName = do
+  -- The signatures for the generated definitions require FlexibleContexts.
+  isExtEnabled FlexibleContexts >>=
+    flip unless (fail "makeFreer requires FlexibleContexts to be enabled")
+
+  reify tcName >>= \case
+    TyConI (DataD _ _ _ _ cons _) -> do
+      sigs <- filter (const makeSigs) <$> mapM genSig cons
+      decs <- mapM genDecl cons
+      return $ sigs ++ decs
+
+    _ ->
+      fail "makeFreer expects a type constructor"
+
+
+------------------------------------------------------------------------------
+-- | Given the cName of a GADT constructor, return the cName of the corresponding
+-- lifted function.
+getDeclName :: Name -> Name
+getDeclName = mkName . overFirst toLower . nameBase
+  where
+    overFirst f (a:as) = f a : as
+    overFirst _ as     = as
+
+
+------------------------------------------------------------------------------
+-- | Builds a function definition of the form @x a b c = send $ X a b c@.
+genDecl :: Con -> Q Dec
+genDecl (ForallC _ _ con) = genDecl con
+genDecl (GadtC [cName] tArgs _) = do
+  let fnName = getDeclName cName
+  let arity = length tArgs - 1
   dTypeVars <- forM [0..arity] $ const $ newName "a"
-  return [ FunD name'
+  return $ FunD fnName
            . pure
            $ Clause (VarP <$> dTypeVars)
-                    (NormalB . AppE (VarE 'send) $ foldl (\b -> AppE b . VarE) (ConE name) dTypeVars)
+                    (NormalB . AppE (VarE 'send) $ foldl (\b -> AppE b . VarE) (ConE cName) dTypeVars)
                     []
-         ]
-liftedFuncDecl x = error $ "class contains something that is not a signature" ++ show x
-
-
-generateSig :: Name -> [TyVarBndr] -> Con -> Q [Dec]
-generateSig eff tvs (ForallC _ _ con) = generateSig eff tvs con
-generateSig eff tvs (GadtC [name] ts c) = do
-  let tvs' = init $ fmap unkinded tvs
-  r <- newName "r"
-  let name' = mkName . overFirst toLower $ nameBase name
-  let ts' = fmap snd ts
-      c' = unapp c
-      tt = arrows $ ts' ++ [ConT ''Eff `AppT` VarT r `AppT` last c']
-  return . pure
-         . SigD name'
-         . ForallT (PlainTV r : (fmap PlainTV $ mapMaybe isFree ts'))
-                   [AppT (AppT (ConT ''Member) (head c')) $ VarT r]
-         $ tt
-
-  -- HowHow :: Int -> Bool -> s -> MyEffect s s
-
-isFree :: Type -> Maybe Name
-isFree (VarT n) = Just n
-isFree _ = Nothing
-
-unkinded :: TyVarBndr -> Name
-unkinded (PlainTV n) = n
-unkinded _ = error "bad!"
-
-unapp :: Type -> [Type]
-unapp (AppT a b) = a : unapp b
-unapp x = [x]
-
-
-arrows :: [Type] -> Type
-arrows = foldr1 (AppT . AppT ArrowT)
-
+genDecl _ = fail "genDecl expects a GADT constructor"
 
 
 ------------------------------------------------------------------------------
--- | Given a 'Name' and a list of 'Name's, treads the first as a constructor,
--- and applies the remainder as type variables to it. Left associative.
-foldTypeApp :: Name -> [Type] -> Type
-foldTypeApp n = foldl (\b -> AppT b) (ConT n)
+-- | Generates a type signature of the form
+-- @x :: Member (Effect e) effs => a -> b -> c -> Eff effs r@.
+genSig :: Con -> Q Dec
+genSig (ForallC _ _ con) = genSig con
+genSig (GadtC [cName] tArgs' ctrType) = do
+  effs <- newName "effs"
+  let fnName           = getDeclName cName
+      tArgs            = fmap snd tArgs'
+      AppT eff tRet    = ctrType
+      otherVars        = unapply ctrType
+      quantifiedVars   = fmap PlainTV . nub
+                                      $ effs : mapMaybe freeVarName
+                                                        (tArgs ++ otherVars)
+      memberConstraint = ConT ''Member `AppT` eff       `AppT` VarT effs
+      resultType       = ConT ''Eff    `AppT` VarT effs `AppT` tRet
+
+  return . SigD fnName
+         . ForallT quantifiedVars [memberConstraint]
+         . foldArrows
+         $ tArgs ++ [resultType]
+genSig _ = fail "genSig expects a GADT constructor"
 
 
 ------------------------------------------------------------------------------
--- | Computes the arity of a function type.
--- Retrieved from http://www.parsonsmatt.org/2015/11/15/template_haskell.html
-tyArity :: Type -> Int
-tyArity = go 0
-  where
-    go :: Int -> Type -> Int
-    go n (AppT (AppT ArrowT _) rest) =
-      go (n+1) rest
-    go n (ForallT _ _ rest) =
-      go n rest
-    go n _ =
-      n
+-- | Gets the name of the free variable in the 'Type', if it exists.
+freeVarName :: Type -> Maybe Name
+freeVarName (VarT n) = Just n
+freeVarName _ = Nothing
+
+
+------------------------------------------------------------------------------
+-- | Folds a list of 'Type's into a right-associative arrow 'Type'.
+foldArrows :: [Type] -> Type
+foldArrows = foldr1 (AppT . AppT ArrowT)
+
+unapply :: Type -> [Type]
+unapply (AppT a b) = unapply a ++ unapply b
+unapply a = [a]
+
