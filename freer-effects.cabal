@@ -56,7 +56,7 @@ library
       src
   ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude
   build-depends:
-      base >=4.7 && <5
+      base >=4.7 && <5, template-haskell
   if flag(pedantic)
     ghc-options: -Werror
   if impl(ghc >=8)
@@ -80,6 +80,7 @@ library
       Data.OpenUnion
       Data.OpenUnion.Internal
   other-modules:
+      Test
       Paths_freer_effects
   default-language: Haskell2010
 
@@ -89,7 +90,7 @@ executable freer-examples
       examples/src
   ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude
   build-depends:
-      base >=4.7 && <5
+      base >=4.7 && <5, template-haskell
     , freer-effects
   if flag(pedantic)
     ghc-options: -Werror
