@@ -68,7 +68,7 @@ genFreer makeSigs tcName = do
 
 
 ------------------------------------------------------------------------------
--- | Given the cName of a GADT constructor, return the cName of the corresponding
+-- | Given the name of a GADT constructor, return the name of the corresponding
 -- lifted function.
 getDeclName :: Name -> Name
 getDeclName = mkName . overFirst toLower . nameBase
