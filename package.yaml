@@ -60,6 +60,7 @@ ghc-options:
 
 dependencies:
   - base >=4.7 && <5
+  - template-haskell >=2.9 && <2.12
 
 library:
   source-dirs: src
@@ -74,6 +75,7 @@ library:
     - Control.Monad.Freer.Reader
     - Control.Monad.Freer.State
     - Control.Monad.Freer.StateRW
+    - Control.Monad.Freer.TH
     - Control.Monad.Freer.Trace
     - Control.Monad.Freer.Writer
     - Data.FTCQueue

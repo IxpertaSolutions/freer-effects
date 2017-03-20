@@ -1,4 +1,4 @@
--- This file has been generated from package.yaml by hpack version 0.15.0.
+-- This file has been generated from package.yaml by hpack version 0.17.0.
 --
 -- see: https://github.com/sol/hpack
 
@@ -56,7 +56,8 @@ library
       src
   ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude
   build-depends:
-      base >=4.7 && <5, template-haskell
+      base >=4.7 && <5
+    , template-haskell >=2.9 && <2.12
   if flag(pedantic)
     ghc-options: -Werror
   if impl(ghc >=8)
@@ -74,13 +75,13 @@ library
       Control.Monad.Freer.Reader
       Control.Monad.Freer.State
       Control.Monad.Freer.StateRW
+      Control.Monad.Freer.TH
       Control.Monad.Freer.Trace
       Control.Monad.Freer.Writer
       Data.FTCQueue
       Data.OpenUnion
       Data.OpenUnion.Internal
   other-modules:
-      Test
       Paths_freer_effects
   default-language: Haskell2010
 
@@ -90,7 +91,8 @@ executable freer-examples
       examples/src
   ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude
   build-depends:
-      base >=4.7 && <5, template-haskell
+      base >=4.7 && <5
+    , template-haskell >=2.9 && <2.12
     , freer-effects
   if flag(pedantic)
     ghc-options: -Werror
@@ -113,6 +115,7 @@ test-suite hlint
   ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude -threaded -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , template-haskell >=2.9 && <2.12
   if flag(pedantic)
     ghc-options: -Werror
   if impl(ghc >=8)
@@ -133,6 +136,7 @@ test-suite unit
   ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude
   build-depends:
       base >=4.7 && <5
+    , template-haskell >=2.9 && <2.12
     , QuickCheck
     , freer-effects
     , tasty
@@ -160,6 +164,7 @@ benchmark core
   ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude -O2
   build-depends:
       base >=4.7 && <5
+    , template-haskell >=2.9 && <2.12
     , criterion
     , extensible-effects >= 1.11 && < 1.12
     , free
