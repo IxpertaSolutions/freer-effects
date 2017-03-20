@@ -92,7 +92,6 @@ executable freer-examples
   ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude
   build-depends:
       base >=4.7 && <5
-    , template-haskell >=2.9 && <2.12
     , freer-effects
   if flag(pedantic)
     ghc-options: -Werror
@@ -115,7 +114,6 @@ test-suite hlint
   ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude -threaded -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
-    , template-haskell >=2.9 && <2.12
   if flag(pedantic)
     ghc-options: -Werror
   if impl(ghc >=8)
@@ -136,7 +134,6 @@ test-suite unit
   ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude
   build-depends:
       base >=4.7 && <5
-    , template-haskell >=2.9 && <2.12
     , QuickCheck
     , freer-effects
     , tasty
@@ -164,7 +161,6 @@ benchmark core
   ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude -O2
   build-depends:
       base >=4.7 && <5
-    , template-haskell >=2.9 && <2.12
     , criterion
     , extensible-effects >= 1.11 && < 1.12
     , free
