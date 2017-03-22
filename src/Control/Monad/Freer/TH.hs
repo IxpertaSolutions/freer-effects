@@ -33,7 +33,7 @@ makeFreer = genFreer True
 --
 -- @
 -- data Lang x where
---   Output :: String -> Lang x
+--   Output :: String -> Lang ()
 --
 -- makeFreer_ 'Lang
 --
