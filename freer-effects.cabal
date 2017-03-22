@@ -150,6 +150,7 @@ test-suite unit
       Tests.NonDet
       Tests.Reader
       Tests.State
+      Tests.Trace
   default-language: Haskell2010
 
 benchmark core
