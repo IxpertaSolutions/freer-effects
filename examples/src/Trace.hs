@@ -6,21 +6,22 @@ module Trace (module Trace) where
 import Prelude ((+))
 
 import Control.Applicative ((<$>), (<*>), pure)
-import Data.Function (($))
+import Data.Function (($), (.))
 import Data.Int (Int)
 import Data.Monoid ((<>))
+import Data.String (String)
 import System.IO (IO)
 import Text.Show (Show(show))
 
-import Control.Monad.Freer (Eff, Member)
+import Control.Monad.Freer (Eff, Member, runM)
 import Control.Monad.Freer.Reader (ask, runReader)
-import Control.Monad.Freer.Trace (Trace, runTrace, trace)
+import Control.Monad.Freer.Trace (Trace, runTraceIO, trace)
 
 
 -- Higher-order effectful function
 -- The inferred type shows that the Trace affect is added to the effects
 -- of r
-mapMdebug:: (Show a, Member Trace r) =>
+mapMdebug:: (Show a, Member (Trace String) r) =>
      (a -> Eff r b) -> [a] -> Eff r [b]
 mapMdebug _ [] = pure []
 mapMdebug f (h:t) = do
@@ -30,7 +31,7 @@ mapMdebug f (h:t) = do
   pure (h':t')
 
 tMd :: IO [Int]
-tMd = runTrace $ runReader (mapMdebug f [1..5]) (10::Int)
+tMd = runM . runTraceIO $ runReader (mapMdebug f [1..5]) (10::Int)
  where f x = (+) <$> ask <*> pure x
 {-
 mapMdebug: 1
@@ -43,7 +44,7 @@ mapMdebug: 5
 
 -- duplicate layers
 tdup :: IO ()
-tdup = runTrace $ runReader m (10::Int)
+tdup = runM . runTraceIO $ runReader m (10::Int)
  where
  m = do
      runReader tr (20::Int)
