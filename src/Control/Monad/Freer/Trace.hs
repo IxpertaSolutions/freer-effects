@@ -30,8 +30,11 @@ module Control.Monad.Freer.Trace
     , runTraceIO
     , runTraceSilent
 
-    -- * Example: Simple Logging Facility
+    -- * Example 1: Simple Logging Facility
     -- $simpleLoggingFacility
+
+    -- * Example 2: Debugging Pure Functions
+    -- $debuggingPureFunctions
     )
   where
 
@@ -136,3 +139,55 @@ runTraceSilent p = runTrace (f p)
 -- > runLogger h l = runTrace f
 -- >   where
 -- >     f Log{..} = when (l <= level) . send $ hPrint h item
+--
+
+-- $debuggingPureFunctions
+--
+-- Even happened to you that you needed to trace pure function?
+-- Write your function using 'Trace' effect and then use 'runTraceSilent'.
+--
+-- Using code from previous example (for complete example look into @examples@
+-- directory in the source tree):
+--
+-- > data FactState = FactState
+-- >     { bits :: Integer
+-- >     , currentValue :: Integer
+-- >     }
+-- >   deriving Show
+-- >
+-- > _bits :: (Integer -> Integer) -> FactState -> FactState
+-- > _bits f s@FactState{..} = s{bits=f bits}
+-- >
+-- > _currentValue :: (Integer -> Integer) -> FactState -> FactState
+-- > _currentValue f s@FactState{..} = s{currentValue=f currentValue}
+-- >
+-- > example :: IO ()
+-- > example = do
+-- >     forM_ [minBound..maxBound] $ \ ll -> do
+-- >         putStrLn $ "Running `factDebug 10` with LogLevel = " <> show ll
+-- >         void . runM . runLogger ll $ factDebug 10
+-- >         putStrLn "Done...\n\n"
+-- >     putStrLn "Fact as a pure function: "
+-- >     print $ fact 10
+-- >
+-- > fact :: Integer -> Integer
+-- > fact = purify . factDebug
+-- >   where
+-- >     purify = run . runTraceSilent (Proxy :: Proxy LogItem)
+-- >
+-- > factDebug :: Member Logger effs => Integer -> Eff effs Integer
+-- > factDebug n = do
+-- >     val@FactState{..} <- execState (factDebug' n) (FactState 8 1)
+-- >     info (Msg "Result", val)
+-- >     pure currentValue
+-- >
+-- > factDebug' :: Members [State FactState, Logger] effs => Integer -> Eff effs ()
+-- > factDebug' n = forM_ [1..n] $ \m -> do
+-- >     modify $ _currentValue (m*)
+-- >     FactState{..} <- get
+-- >     debug (Msg "current step", m, currentValue)
+-- >     when (maxFromBits bits < currentValue) $ do
+-- >         warnMsg $ "Value too large for " <> show bits <> " bit store"
+-- >         modify $ _bits (2*)
+-- >   where
+-- >     maxFromBits b = 2^(b - 1) - 1
