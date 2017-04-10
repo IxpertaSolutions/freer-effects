@@ -4,8 +4,9 @@
 
 module Control.Monad.Freer.Functor where
 
+import Control.Applicative (pure)
 import Control.Monad.Freer.Internal (Eff, replaceRelay)
-import Prelude (pure, flip, ($))
+import Prelude (flip, ($))
 
 
 -- | A class witnessing that 'eff' forms a covariant functor in its second type
