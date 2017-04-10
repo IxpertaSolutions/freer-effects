@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE TypeOperators #-}
 -- |
@@ -23,10 +24,13 @@ module Control.Monad.Freer.Exception
     )
   where
 
+import Prelude (($), (>>=))
+
 import Control.Applicative (pure)
 import Data.Either (Either(Left, Right))
 import Data.Function ((.))
 
+import Control.Monad.Freer.Functor (CoEff (effmap), eff)
 import Control.Monad.Freer.Internal (Eff, Member, handleRelay, interpose, send)
 
 
@@ -36,6 +40,10 @@ import Control.Monad.Freer.Internal (Eff, Member, handleRelay, interpose, send)
 
 -- | Exceptions of the type @e :: *@ with no resumption.
 newtype Exc e a = Exc e
+
+instance CoEff Exc where
+  effmap f = eff $ \arr -> \case
+    Exc e -> send (Exc $ f e) >>= arr
 
 -- | Throws an error carrying information of type @e :: *@.
 throwError :: Member (Exc e) effs => e -> Eff effs a
