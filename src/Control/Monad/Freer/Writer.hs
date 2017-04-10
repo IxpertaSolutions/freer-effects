@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE TypeOperators #-}
 -- |
@@ -26,16 +27,22 @@ module Control.Monad.Freer.Writer
 
 import Control.Applicative (pure)
 import Control.Arrow (second)
+import Control.Monad ((>>=))
 import Data.Function (($))
 import Data.Functor ((<$>))
 import Data.Monoid (Monoid, (<>), mempty)
 
+import Control.Monad.Freer.Functor (CoEff (effmap), eff)
 import Control.Monad.Freer.Internal (Eff, Member, handleRelay, send)
 
 
 -- | Writer effects - send outputs to an effect environment.
 data Writer w a where
     Writer :: w -> Writer w ()
+
+instance CoEff Writer where
+  effmap f = eff $ \arr -> \case
+    Writer w -> send (Writer $ f w) >>= arr
 
 -- | Send a change to the attached environment.
 tell :: Member (Writer w) effs => w -> Eff effs ()

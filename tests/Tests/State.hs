@@ -1,20 +1,23 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Tests.State (tests)
   where
 
-import Prelude ((+))
+import Prelude ((+), String, flip, show, (++), fst, snd)
 
 import Control.Applicative (pure)
 import Control.Monad ((>>))
 import Data.Eq ((==))
 import Data.Function (($), (.))
 import Data.Int (Int)
+import Data.Tuple (swap)
 
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (testProperty)
 
 import Control.Monad.Freer (run)
+import Control.Monad.Freer.Functor (inveffmap)
 import Control.Monad.Freer.State (evalState, execState, get, put, runState)
 import Control.Monad.Freer.StateRW (ask, runStateR, tell)
 
@@ -39,7 +42,17 @@ tests = testGroup "State tests"
         $ \n -> testEvalState n == n
     , testProperty "testExecState: execState returns final state"
         $ \n -> testExecState n == n
+    , testProperty "testInveffmap: inveffmap works over state"
+        $ \n -> testInveffmap n == (show (fst n) ++ snd n)
     ]
+
+testInveffmap :: (Int, String) -> String
+testInveffmap n = run $ flip evalState (0 :: Int, "hello") $ inveffmap swap swap go
+  where
+    go = do
+      put $ swap n
+      (s, i :: Int) <- get
+      pure $ show i ++ s
 
 testPutGet :: Int -> Int -> (Int, Int)
 testPutGet n start = run $ runState go start

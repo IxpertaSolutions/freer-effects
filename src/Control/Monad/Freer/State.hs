@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
@@ -49,7 +50,9 @@ import Data.Functor ((<$>), fmap)
 import Data.Maybe (Maybe(Just))
 import Data.Proxy (Proxy)
 import Data.Tuple (fst, snd)
+import Prelude (($), (.))
 
+import Control.Monad.Freer.Functor (InvEff (inveffmap), eff)
 import Control.Monad.Freer.Internal
     ( Eff(E, Val)
     , Member
@@ -71,6 +74,11 @@ import Control.Monad.Freer.Internal
 data State s a where
     Get :: State s s
     Put :: !s -> State s ()
+
+instance InvEff State where
+  inveffmap f g = eff $ \arr -> \case
+    Get   -> send Get         >>= arr . g
+    Put s -> send (Put $ f s) >>= arr
 
 -- | Retrieve the current value of the state of type @s :: *@.
 get :: Member (State s) effs => Eff effs s

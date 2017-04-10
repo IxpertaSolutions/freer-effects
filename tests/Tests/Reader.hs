@@ -4,7 +4,7 @@
 module Tests.Reader (tests)
   where
 
-import Prelude (Integer, (+), (*), fromIntegral)
+import Prelude (String, Integer, (++), (+), (*), fromIntegral, show)
 
 import Control.Applicative ((<*>), pure)
 import Data.Eq (Eq((==)))
@@ -16,6 +16,7 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (testProperty)
 
 import Control.Monad.Freer (run)
+import Control.Monad.Freer.Functor (contraeffmap)
 import Control.Monad.Freer.Reader (ask, local, runReader)
 
 
@@ -27,6 +28,8 @@ tests = testGroup "Reader tests"
         $ \i n -> testMultiReader i n == (i + 2) + fromIntegral (n + 1)
     , testProperty "Local injects into env"
         $ \env inc -> testLocal env inc == 2 * (env + 1) + inc
+    , testProperty "We can effmap Readers: n + x"
+        $ \n x -> testEffmapReader n x == show n ++ show x
     ]
 
 --------------------------------------------------------------------------------
@@ -34,6 +37,9 @@ tests = testGroup "Reader tests"
 --------------------------------------------------------------------------------
 testReader :: Int -> Int -> Int
 testReader n x = run . flip runReader n $ (+) <$> ask <*> pure x
+
+testEffmapReader :: Int -> Int -> String
+testEffmapReader n x = run . flip runReader n . contraeffmap show $ (++) <$> ask <*> pure (show x)
 
 {-
 t1rr' = run t1
