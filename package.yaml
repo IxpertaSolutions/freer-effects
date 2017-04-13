@@ -115,7 +115,7 @@ tests:
       - condition: flag(test-hlint)
         then:
           buildable: true
-          dependencies: [hlint ==1.9.*]
+          dependencies: [hlint ==2.0.*]
         else:
           buildable: false
 
