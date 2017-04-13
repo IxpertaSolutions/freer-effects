@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+* Add new upper bounds for latest HLint release.
 * Introducing `replaceRelay` and `replaceRelayS`.
   [PR #27](https://github.com/IxpertaSolutions/freer-effects/pull/27)
   (**new**)

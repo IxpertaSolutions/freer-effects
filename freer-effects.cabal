@@ -118,7 +118,7 @@ test-suite hlint
     ghc-options: -Wredundant-constraints -Wmissing-import-lists
   if flag(test-hlint)
     build-depends:
-        hlint ==1.9.*
+        hlint ==2.0.*
     buildable: True
   else
     buildable: False
