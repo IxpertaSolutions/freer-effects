@@ -26,7 +26,7 @@ module Control.Monad.Freer.Trace
 import Control.Monad ((>>), return)
 import Data.Function ((.))
 import Data.String (String)
-import System.IO (IO, putStrLn)
+import System.IO (IO, hPutStrLn, stderr)
 
 import Control.Monad.Freer.Internal (Eff(E, Val), Member, extract, qApp, send)
 
@@ -43,4 +43,4 @@ trace = send . Trace
 runTrace :: Eff '[Trace] a -> IO a
 runTrace (Val x) = return x
 runTrace (E u q) = case extract u of
-    Trace s -> putStrLn s >> runTrace (qApp q ())
+    Trace s -> hPutStrLn stderr s >> runTrace (qApp q ())
