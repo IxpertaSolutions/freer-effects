@@ -42,7 +42,7 @@ import Control.Monad ((>>=), return)
 import Data.Either (Either(Left, Right))
 import Data.Function ((.), const)
 import Data.String (String)
-import System.IO (IO, putStrLn)
+import System.IO (IO, hPutStrLn, stderr)
 
 import Control.Monad.Freer.Internal
     (Eff(E, Val), Member, decomp, qApp, send, tsingleton)
@@ -68,7 +68,7 @@ runTrace f (E u q) = case decomp u of
 
 -- | Simple handler for 'Trace' 'String' that just writes it to stdout.
 runTraceIO :: Member IO effs => Eff (Trace String ': effs) a -> Eff effs a
-runTraceIO = runTrace (send . putStrLn)
+runTraceIO = runTrace (send . hPutStrLn stderr)
 
 -- | Ignore traces.
 runTraceSilent
