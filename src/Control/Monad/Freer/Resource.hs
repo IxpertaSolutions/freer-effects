@@ -42,7 +42,7 @@ import System.IO
 
 ------------------------------------------------------------------------------
 -- | Instances of this typeclass describe which effects 'r' are allowed to be
--- present inside of a fileHandleRegion for 'res'.
+-- present inside of a region for 'res'.
 class SafeForRegion res (r :: [* -> *])
 
 instance SafeForRegion res '[]
@@ -56,7 +56,7 @@ instance SafeForRegion Handle '[IO]
 
 ------------------------------------------------------------------------------
 -- | A wrapper around a 'res', with an eigenvariable to prevent this type from
--- exiting the fileHandleRegion its lifetime is scoped by.
+-- exiting the region its lifetime is scoped by.
 newtype Resource res s = Resource res
 
 
@@ -83,9 +83,9 @@ type instance ResourceCtor Handle = (FilePath, IOMode)
 data RegionEff res s a where
   -- | Create a new 'res'.
   RENew :: ResourceCtor res -> RegionEff res s (Resource res s)
-  -- | Forget about a 'res' (because it's been 'give'n to another fileHandleRegion).
+  -- | Forget about a 'res' (because it's been 'give'n to another region).
   REForget  :: Resource res s -> RegionEff res s ()
-  -- | Acquire a 'res' from another fileHandleRegion.
+  -- | Acquire a 'res' from another region.
   REAcquire :: Resource res s' -> RegionEff res s (Resource res s)
 
 
@@ -98,25 +98,25 @@ type family Ancestor (n::Nat) (lst :: [* -> *]) :: * where
 
 
 ------------------------------------------------------------------------------
--- | Helper value to describe 'acquire'ing a resource in this fileHandleRegion.
+-- | Helper value to describe 'acquire'ing a resource in this region.
 thisRegion :: Proxy 0
 thisRegion = Proxy
 
 
 ------------------------------------------------------------------------------
--- | Helper value to describe 'acquire'ing a resource in the parent fileHandleRegion.
+-- | Helper value to describe 'acquire'ing a resource in the parent region.
 parentRegion :: Proxy 1
 parentRegion = Proxy
 
 
 ------------------------------------------------------------------------------
--- | Helper value to describe 'acquire'ing a resource in the grandparent fileHandleRegion.
+-- | Helper value to describe 'acquire'ing a resource in the grandparent region.
 gparentRegion :: Proxy 2
 gparentRegion = Proxy
 
 
 ------------------------------------------------------------------------------
--- | Acquire a 'res' scoped in the current fileHandleRegion.
+-- | Acquire a 'res' scoped in the current region.
 acquire :: forall res r s
          . ( s ~ Ancestor 0 r
            , Member (RegionEff res s) r
@@ -127,7 +127,7 @@ acquire = acquire' thisRegion
 
 
 ------------------------------------------------------------------------------
--- | Acquire a 'res' scoped in an ancestor fileHandleRegion.
+-- | Acquire a 'res' scoped in an ancestor region.
 acquire' :: ( s ~ Ancestor n r
             , Member (RegionEff res s) r
             )
@@ -147,12 +147,12 @@ type family Length (lst :: [* -> *]) :: Nat where
 
 ------------------------------------------------------------------------------
 -- | Internal type to create eigenvariables around, in order to protect
--- resources from exiting their fileHandleRegion scope.
+-- resources from exiting their region scope.
 data L (n :: Nat) k
 
 
 ------------------------------------------------------------------------------
--- | Helper function to build fileHandleRegion constructs for resources of type 'res'.
+-- | Helper function to build region constructs for resources of type 'res'.
 handleRegionRelay :: forall res effs a
                    . ( SafeForRegion res effs
                      , Eq res
@@ -171,7 +171,7 @@ handleRegionRelay :: forall res effs a
                         -> Union effs b
                         -> Eff effs a
                      )
-                     -- | A fileHandleRegion in which we can allocate 'res's.
+                     -- | A region in which we can allocate 'res's.
                   -> (forall s. Eff (RegionEff res (L (Length effs) s) ': effs) a)
                   -> Eff effs a
 handleRegionRelay acquireM releaseM catchM = loop []
