@@ -41,52 +41,56 @@ class SafeForRegion (r :: [* -> *])
 instance SafeForRegion '[]
 instance SafeForRegion r => SafeForRegion (SIO ': r)
 instance SafeForRegion r => SafeForRegion (Exc SomeException ': r)
-instance SafeForRegion r => SafeForRegion (RegionEff s ': r)
+instance SafeForRegion r => SafeForRegion (RegionEff res s ': r)
 -- instance SafeForRegion r => SafeForRegion (Reader a ': r)
 -- instance SafeForRegion r => SafeForRegion (State a ': r)
 
-newtype SHandle s = SHandle Handle
+newtype Resource res s = Resource res
 
+
+type family ResourceCtor res
+
+type instance ResourceCtor Handle = (FilePath, IOMode)
 
 -- Data constructors are not exported
-data RegionEff s a where
-  RENew :: FilePath -> IOMode -> RegionEff s (SHandle s)
+data RegionEff res s a where
+  RENew :: ResourceCtor res -> RegionEff res s (Resource res s)
   -- Used for duplicating regions
-  REForget  :: SHandle s -> RegionEff s ()
-  REAcquire :: SHandle s' -> RegionEff s (SHandle s)
+  REForget  :: Resource res s -> RegionEff res s ()
+  REAcquire :: Resource res s' -> RegionEff res s (Resource res s)
 
 type family Ancestor (n::Nat) (lst :: [* -> *]) :: * where
-  Ancestor 0 (RegionEff s ': lst)     = s
-  Ancestor n (RegionEff s ': lst)     = Ancestor (n-1) lst
+  Ancestor 0 (RegionEff res s ': lst)     = s
+  Ancestor n (RegionEff res s ': lst)     = Ancestor (n-1) lst
   Ancestor n  (t ': lst)              = Ancestor n lst
 
-newSHandle :: (SMonadIO r, s ~ Ancestor 0 r, Member (RegionEff s) r) => FilePath -> IOMode -> Eff r (SHandle s)
+newSHandle :: (SMonadIO r, s ~ Ancestor 0 r, Member (RegionEff Handle s) r) => FilePath -> IOMode -> Eff r (Resource Handle s)
 newSHandle = newSHandle' (Proxy::Proxy 0)
 
-newSHandle' :: (SMonadIO r, s ~ Ancestor n r, Member (RegionEff s) r) => Proxy n -> FilePath -> IOMode -> Eff r (SHandle s)
-newSHandle' _ fname fmode = send (RENew fname fmode)
+newSHandle' :: (SMonadIO r, s ~ Ancestor n r, Member (RegionEff Handle s) r) => Proxy n -> FilePath -> IOMode -> Eff r (Resource Handle s)
+newSHandle' _ fname fmode = send (RENew (fname, fmode))
 
 type family Length (lst :: [* -> *]) :: Nat where
   Length '[] = 0
-  Length (RegionEff x ': t) = 1 + (Length t)
+  Length (RegionEff res x ': t) = 1 + (Length t)
   Length (h ': t) = Length t
 
 data L (n::Nat) k
 
 
 newRgn :: forall r a. SMonadIO r =>
-          (forall s. Eff (RegionEff (L (Length r) s) ': r) a) -> Eff r a
+          (forall s. Eff (RegionEff Handle (L (Length r) s) ': r) a) -> Eff r a
 newRgn m = loop [] m
  where
-   loop :: [Handle] -> Eff (RegionEff (L (Length r) s) ': r) a -> Eff r a
+   loop :: [Handle] -> Eff (RegionEff Handle (L (Length r) s) ': r) a -> Eff r a
    loop fhs (Val x) = close_fhs fhs >> return x
    loop fhs (E u q)  = case decomp u of
-     Right (RENew fname fmode) -> do
+     Right (RENew (fname, fmode)) -> do
        fh <- lIO $ openFile fname fmode -- may raise exc
-       k (fh:fhs) (SHandle fh)
-     Right (REForget (SHandle fh)) -> k (delete fh fhs) ()
-     Right (REAcquire (SHandle fh)) ->
-       k (if fh `elem` fhs then fhs else fh:fhs) (SHandle fh)
+       k (fh:fhs) (Resource fh)
+     Right (REForget (Resource fh)) -> k (delete fh fhs) ()
+     Right (REAcquire (Resource fh)) ->
+       k (if fh `elem` fhs then fhs else fh:fhs) (Resource fh)
      Left  u' -> case prj u' of
        Just (Exc e) -> close_fhs fhs >> throwError (e::SomeException)
        Nothing      -> E u' (tsingleton (k fhs))
@@ -101,11 +105,11 @@ newRgn m = loop [] m
     catch (hClose fh) (\(e::SomeException) ->
                         hPutStrLn stderr ("Error on close: " ++ show e))
 
-type ActiveRegion s r = (Member (RegionEff s) r, SMonadIO r)
+type ActiveRegion res s r = (Member (RegionEff res s) r, SMonadIO r)
 
-shDup :: (ActiveRegion s r, ActiveRegion s' r,
+shDup :: (ActiveRegion res s r, ActiveRegion res s' r,
          s' ~ Ancestor n r,
-         s ~ (L n1 e1), s' ~ (L n2 e2), n2 <= n1) => Proxy n -> SHandle s -> Eff r (SHandle s')
+         s ~ (L n1 e1), s' ~ (L n2 e2), n2 <= n1) => Proxy n -> Resource res s -> Eff r (Resource res s')
 shDup _ h =
   send (REForget h) >> send (REAcquire h)
 
