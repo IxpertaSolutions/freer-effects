@@ -3,16 +3,29 @@
 {-# LANGUAGE FlexibleContexts                   #-}
 {-# LANGUAGE FlexibleInstances                  #-}
 {-# LANGUAGE GADTs                              #-}
+{-# LANGUAGE MultiParamTypeClasses              #-}
 {-# LANGUAGE PolyKinds                          #-}
 {-# LANGUAGE RankNTypes                         #-}
 {-# LANGUAGE ScopedTypeVariables                #-}
+{-# LANGUAGE TypeApplications                   #-}
 {-# LANGUAGE TypeFamilies                       #-}
 {-# LANGUAGE TypeOperators                      #-}
 {-# LANGUAGE UndecidableInstances               #-}
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
 
-module Control.Monad.Freer.Resource where
+module Control.Monad.Freer.Resource
+  ( SafeForRegion
+  , Resource ()
+  , unsafeWithResource
+  , ResourceCtor
+  , catchNothing
+  , acquire
+  , acquire'
+  , region
+  , give
+  ) where
 
+import Data.Bool (bool)
 import Control.Exception
 import Control.Monad.Freer
 import Control.Monad.Freer.Internal
@@ -22,30 +35,21 @@ import Data.Proxy
 import Data.List (delete)
 import System.IO
 
-data SIO a where
-  DoIO :: IO a -> SIO (Either SomeException a)
 
-type SMonadIO r = (Member SIO r, Member (Exc SomeException) r)
-
-lIO :: SMonadIO r => IO a -> Eff r a
-lIO m = send (DoIO m) >>= either throwError return
-
-topSIO :: Eff '[SIO, Exc SomeException] w -> IO w
-topSIO (Val x) = return x
-topSIO (E u q) | Just (DoIO m) <- prj u = try m >>= topSIO . qApp q
-topSIO (E u _) | Just (Exc e)  <- prj u = throw (e :: SomeException)
-topSIO (E _ _) = error "cannot happen"
-
-
-class SafeForRegion (r :: [* -> *])
-instance SafeForRegion '[]
-instance SafeForRegion r => SafeForRegion (SIO ': r)
-instance SafeForRegion r => SafeForRegion (Exc SomeException ': r)
-instance SafeForRegion r => SafeForRegion (RegionEff res s ': r)
+class SafeForRegion res (r :: [* -> *])
+instance SafeForRegion res '[]
+instance SafeForRegion Handle r => SafeForRegion Handle (Exc SomeException ': r)
+instance SafeForRegion Handle '[IO]
+instance SafeForRegion res r => SafeForRegion res (RegionEff res s ': r)
 -- instance SafeForRegion r => SafeForRegion (Reader a ': r)
 -- instance SafeForRegion r => SafeForRegion (State a ': r)
 
 newtype Resource res s = Resource res
+
+
+-- TODO(sandy): how can we existentialize 'res' so it can't escape?
+unsafeWithResource :: Resource res s -> (res -> a) -> a
+unsafeWithResource (Resource r) f = f r
 
 
 type family ResourceCtor res
@@ -64,11 +68,19 @@ type family Ancestor (n::Nat) (lst :: [* -> *]) :: * where
   Ancestor n (RegionEff res s ': lst)     = Ancestor (n-1) lst
   Ancestor n  (t ': lst)              = Ancestor n lst
 
-newSHandle :: (SMonadIO r, s ~ Ancestor 0 r, Member (RegionEff Handle s) r) => FilePath -> IOMode -> Eff r (Resource Handle s)
-newSHandle = newSHandle' (Proxy::Proxy 0)
+acquire :: forall res r s
+         . ( s ~ Ancestor 0 r
+           , Member (RegionEff res s) r
+           )
+        => ResourceCtor res
+        -> Eff r (Resource res s)
+acquire = acquire' $ Proxy @0
 
-newSHandle' :: (SMonadIO r, s ~ Ancestor n r, Member (RegionEff Handle s) r) => Proxy n -> FilePath -> IOMode -> Eff r (Resource Handle s)
-newSHandle' _ fname fmode = send (RENew (fname, fmode))
+acquire' :: (s ~ Ancestor n r, Member (RegionEff res s) r)
+            => Proxy n
+            -> ResourceCtor res
+            -> Eff r (Resource res s)
+acquire' _ ctor = send $ RENew ctor
 
 type family Length (lst :: [* -> *]) :: Nat where
   Length '[] = 0
@@ -78,39 +90,91 @@ type family Length (lst :: [* -> *]) :: Nat where
 data L (n::Nat) k
 
 
-newRgn :: forall r a. SMonadIO r =>
-          (forall s. Eff (RegionEff Handle (L (Length r) s) ': r) a) -> Eff r a
-newRgn m = loop [] m
- where
-   loop :: [Handle] -> Eff (RegionEff Handle (L (Length r) s) ': r) a -> Eff r a
-   loop fhs (Val x) = close_fhs fhs >> return x
-   loop fhs (E u q)  = case decomp u of
-     Right (RENew (fname, fmode)) -> do
-       fh <- lIO $ openFile fname fmode -- may raise exc
-       k (fh:fhs) (Resource fh)
-     Right (REForget (Resource fh)) -> k (delete fh fhs) ()
-     Right (REAcquire (Resource fh)) ->
-       k (if fh `elem` fhs then fhs else fh:fhs) (Resource fh)
-     Left  u' -> case prj u' of
-       Just (Exc e) -> close_fhs fhs >> throwError (e::SomeException)
-       Nothing      -> E u' (tsingleton (k fhs))
-    where k s = qComp q (loop s)
+handleRegionRelay :: forall res effs a
+                   . (SafeForRegion res effs, Eq res)
+                  => (ResourceCtor res -> Eff effs res)
+                  -> (res -> Eff effs ())
+                  -> (forall (b :: *). Eff effs ()
+                             -> (Union effs b -> Eff effs a)
+                             -> Union effs b
+                             -> Eff effs a
+                     )
+                  -> (forall s. Eff (RegionEff res (L (Length effs) s) ': effs) a)
+                  -> Eff effs a
+handleRegionRelay acquireM releaseM catchM = loop []
+  where
+    releaseAll = mapM_ releaseM
 
-       -- Close all file handles of a region
-   close_fhs []  = return ()
-   close_fhs fhs = send (DoIO (mapM_ close fhs)) >> return ()
-   close :: Handle -> IO ()
-   close fh = do
-    hPutStrLn stderr $ "Closing " ++ show fh
-    catch (hClose fh) (\(e::SomeException) ->
-                        hPutStrLn stderr ("Error on close: " ++ show e))
+    loop :: [res] -> Eff (RegionEff res (L (Length effs) s) ': effs) a -> Eff effs a
+    loop rs (Val x) = releaseAll rs >> return x
+    loop rs (E u q) =
+      case decomp u of
+        Right (RENew ctor) -> do
+          r <- acquireM ctor
+          k (r : rs) $ Resource r
 
-type ActiveRegion res s r = (Member (RegionEff res s) r, SMonadIO r)
+        Right (REForget (Resource r)) ->
+          k (delete r rs) ()
 
-shDup :: (ActiveRegion res s r, ActiveRegion res s' r,
-         s' ~ Ancestor n r,
-         s ~ (L n1 e1), s' ~ (L n2 e2), n2 <= n1) => Proxy n -> Resource res s -> Eff r (Resource res s')
-shDup _ h =
-  send (REForget h) >> send (REAcquire h)
+        Right (REAcquire (Resource r)) ->
+          k (bool (r : rs) rs $ elem r rs) $ Resource r
 
+        Left u' ->
+          catchM (releaseAll rs) ignore u'
+
+      where
+        ignore u' = E u' . tsingleton $ k rs
+        k s = qComp q (loop s)
+
+
+catchNothing :: Eff effs ()
+             -> (Union effs b -> Eff effs a)
+             -> Union effs b
+             -> Eff effs a
+catchNothing = const id
+
+
+
+region :: forall r a
+        . ( Member IO r
+          , SafeForRegion Handle r
+          , Member (Exc SomeException) r
+          )
+       => (forall s. Eff (RegionEff Handle (L (Length r) s) ': r) a)
+       -> Eff r a
+region = handleRegionRelay (send . uncurry openFile) (send . close) handler
+  where
+    close :: Handle -> IO ()
+    close fh = do
+      hPutStrLn stderr $ "Closing " ++ show fh
+      catch (hClose fh) (\(e::SomeException) ->
+                          hPutStrLn stderr ("Error on close: " ++ show e))
+
+    handler releaseAll ignore u =
+      case prj u of
+        Just (Exc e) -> releaseAll >> throwError (e :: SomeException)
+        Nothing -> ignore u
+
+
+-- test :: Eff '[Exc SomeException, IO] String
+-- test = region $ do
+--         _ <- acquire @Handle ("hello", ReadMode)
+--         return "hello"
+
+
+
+
+type ActiveRegion res s r = (Member (RegionEff res s) r)
+
+give :: ( ActiveRegion res s r
+        , ActiveRegion res s' r
+        , s' ~ Ancestor n r
+        , s ~ L n1 e1
+        , s' ~ L n2 e2
+        , n2 <= n1
+        )
+     => Proxy n
+     -> Resource res s
+     -> Eff r (Resource res s')
+give _ h = send (REForget h) >> send (REAcquire h)
 
