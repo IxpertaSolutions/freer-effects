@@ -23,16 +23,19 @@ module Control.Monad.Freer.Resource
   , acquire'
   , region
   , give
+  , thisRegion
+  , parentRegion
+  , gparentRegion
   ) where
 
-import Data.Bool (bool)
-import Control.Exception
+import Control.Exception (SomeException, catch)
 import Control.Monad.Freer
-import Control.Monad.Freer.Internal
-import Control.Monad.Freer.Exception
-import GHC.TypeLits (Nat, type (+), type (-), type (<=))
-import Data.Proxy
+import Control.Monad.Freer.Exception (Exc (..), throwError)
+import Control.Monad.Freer.Internal (Union, Eff (..), qComp, tsingleton, prj, decomp)
+import Data.Bool (bool)
 import Data.List (delete)
+import Data.Proxy (Proxy (..))
+import GHC.TypeLits (Nat, type (+), type (-), type (<=))
 import System.IO
 
 
@@ -68,13 +71,22 @@ type family Ancestor (n::Nat) (lst :: [* -> *]) :: * where
   Ancestor n (RegionEff res s ': lst)     = Ancestor (n-1) lst
   Ancestor n  (t ': lst)              = Ancestor n lst
 
+thisRegion :: Proxy 0
+thisRegion = Proxy
+
+parentRegion :: Proxy 1
+parentRegion = Proxy
+
+gparentRegion :: Proxy 2
+gparentRegion = Proxy
+
 acquire :: forall res r s
          . ( s ~ Ancestor 0 r
            , Member (RegionEff res s) r
            )
         => ResourceCtor res
         -> Eff r (Resource res s)
-acquire = acquire' $ Proxy @0
+acquire = acquire' thisRegion
 
 acquire' :: (s ~ Ancestor n r, Member (RegionEff res s) r)
             => Proxy n
@@ -91,14 +103,24 @@ data L (n::Nat) k
 
 
 handleRegionRelay :: forall res effs a
-                   . (SafeForRegion res effs, Eq res)
-                  => (ResourceCtor res -> Eff effs res)
-                  -> (res -> Eff effs ())
-                  -> (forall (b :: *). Eff effs ()
-                             -> (Union effs b -> Eff effs a)
-                             -> Union effs b
-                             -> Eff effs a
+                   . ( SafeForRegion res effs
+                     , Eq res
                      )
+                  => -- | Strategy to acquire a 'res'.
+                     (ResourceCtor res -> Eff effs res)
+                     -- | Strategy to release a 'res'.
+                  -> (res -> Eff effs ())
+                     -- | Strategy for catching other effects.
+                  -> (forall (b :: *)
+                         . -- | Action to release all resources.
+                           Eff effs ()
+                           -- | Action to ignore this effect.
+                        -> (Union effs b -> Eff effs a)
+                           -- | The effect being caught.
+                        -> Union effs b
+                        -> Eff effs a
+                     )
+                     -- | A region in which we can allocate 'res's.
                   -> (forall s. Eff (RegionEff res (L (Length effs) s) ': effs) a)
                   -> Eff effs a
 handleRegionRelay acquireM releaseM catchM = loop []
