@@ -21,7 +21,7 @@ module Control.Monad.Freer.Resource
   , catchNothing
   , acquire
   , acquire'
-  , region
+  , fileHandleRegion
   , give
   , thisRegion
   , parentRegion
@@ -39,47 +39,83 @@ import GHC.TypeLits (Nat, type (+), type (-), type (<=))
 import System.IO
 
 
+------------------------------------------------------------------------------
+-- | Instances of this typeclass describe which effects 'r' are allowed to be
+-- present inside of a fileHandleRegion for 'res'.
 class SafeForRegion res (r :: [* -> *])
+
 instance SafeForRegion res '[]
+instance SafeForRegion res r => SafeForRegion res (RegionEff res s ': r)
+
 instance SafeForRegion Handle r => SafeForRegion Handle (Exc SomeException ': r)
 instance SafeForRegion Handle '[IO]
-instance SafeForRegion res r => SafeForRegion res (RegionEff res s ': r)
 -- instance SafeForRegion r => SafeForRegion (Reader a ': r)
 -- instance SafeForRegion r => SafeForRegion (State a ': r)
 
+
+------------------------------------------------------------------------------
+-- | A wrapper around a 'res', with an eigenvariable to prevent this type from
+-- exiting the fileHandleRegion its lifetime is scoped by.
 newtype Resource res s = Resource res
 
 
+------------------------------------------------------------------------------
+-- | Helper function to allow library writers to work with 'Resource's. End
+-- users must never use this function, as its misuse can leak resources from
+-- their scoping regions.
+--
 -- TODO(sandy): how can we existentialize 'res' so it can't escape?
-unsafeWithResource :: Resource res s -> (res -> a) -> a
+unsafeWithResource :: Resource res s -> (forall b. (res ~ b) => b -> a) -> a
 unsafeWithResource (Resource r) f = f r
 
 
+------------------------------------------------------------------------------
+-- | Type family for describing the data necessary to construct a request to
+-- acquire a 'res'.
 type family ResourceCtor res
 
 type instance ResourceCtor Handle = (FilePath, IOMode)
 
--- Data constructors are not exported
+
+------------------------------------------------------------------------------
+-- | Underlying effect for managing regions.
 data RegionEff res s a where
+  -- | Create a new 'res'.
   RENew :: ResourceCtor res -> RegionEff res s (Resource res s)
-  -- Used for duplicating regions
+  -- | Forget about a 'res' (because it's been 'give'n to another fileHandleRegion).
   REForget  :: Resource res s -> RegionEff res s ()
+  -- | Acquire a 'res' from another fileHandleRegion.
   REAcquire :: Resource res s' -> RegionEff res s (Resource res s)
 
+
+------------------------------------------------------------------------------
+-- | Finds the 'n'th occurrence of a RegionEff, which must exist.
 type family Ancestor (n::Nat) (lst :: [* -> *]) :: * where
-  Ancestor 0 (RegionEff res s ': lst)     = s
-  Ancestor n (RegionEff res s ': lst)     = Ancestor (n-1) lst
+  Ancestor 0 (RegionEff res s ': lst) = s
+  Ancestor n (RegionEff res s ': lst) = Ancestor (n - 1) lst
   Ancestor n  (t ': lst)              = Ancestor n lst
 
+
+------------------------------------------------------------------------------
+-- | Helper value to describe 'acquire'ing a resource in this fileHandleRegion.
 thisRegion :: Proxy 0
 thisRegion = Proxy
 
+
+------------------------------------------------------------------------------
+-- | Helper value to describe 'acquire'ing a resource in the parent fileHandleRegion.
 parentRegion :: Proxy 1
 parentRegion = Proxy
 
+
+------------------------------------------------------------------------------
+-- | Helper value to describe 'acquire'ing a resource in the grandparent fileHandleRegion.
 gparentRegion :: Proxy 2
 gparentRegion = Proxy
 
+
+------------------------------------------------------------------------------
+-- | Acquire a 'res' scoped in the current fileHandleRegion.
 acquire :: forall res r s
          . ( s ~ Ancestor 0 r
            , Member (RegionEff res s) r
@@ -88,20 +124,34 @@ acquire :: forall res r s
         -> Eff r (Resource res s)
 acquire = acquire' thisRegion
 
-acquire' :: (s ~ Ancestor n r, Member (RegionEff res s) r)
-            => Proxy n
-            -> ResourceCtor res
-            -> Eff r (Resource res s)
+
+------------------------------------------------------------------------------
+-- | Acquire a 'res' scoped in an ancestor fileHandleRegion.
+acquire' :: ( s ~ Ancestor n r
+            , Member (RegionEff res s) r
+            )
+         => Proxy n
+         -> ResourceCtor res
+         -> Eff r (Resource res s)
 acquire' _ ctor = send $ RENew ctor
 
+
+------------------------------------------------------------------------------
+-- | Count how many 'RegionEff's there are in an effect stack.
 type family Length (lst :: [* -> *]) :: Nat where
   Length '[] = 0
   Length (RegionEff res x ': t) = 1 + (Length t)
   Length (h ': t) = Length t
 
-data L (n::Nat) k
+
+------------------------------------------------------------------------------
+-- | Internal type to create eigenvariables around, in order to protect
+-- resources from exiting their fileHandleRegion scope.
+data L (n :: Nat) k
 
 
+------------------------------------------------------------------------------
+-- | Helper function to build fileHandleRegion constructs for resources of type 'res'.
 handleRegionRelay :: forall res effs a
                    . ( SafeForRegion res effs
                      , Eq res
@@ -120,7 +170,7 @@ handleRegionRelay :: forall res effs a
                         -> Union effs b
                         -> Eff effs a
                      )
-                     -- | A region in which we can allocate 'res's.
+                     -- | A fileHandleRegion in which we can allocate 'res's.
                   -> (forall s. Eff (RegionEff res (L (Length effs) s) ': effs) a)
                   -> Eff effs a
 handleRegionRelay acquireM releaseM catchM = loop []
@@ -149,6 +199,9 @@ handleRegionRelay acquireM releaseM catchM = loop []
         k s = qComp q (loop s)
 
 
+------------------------------------------------------------------------------
+-- | Combinator to be used with 'handleRegionRelay' describing that no extra
+-- effects need being caught.
 catchNothing :: Eff effs ()
              -> (Union effs b -> Eff effs a)
              -> Union effs b
@@ -156,15 +209,16 @@ catchNothing :: Eff effs ()
 catchNothing = const id
 
 
-
-region :: forall r a
-        . ( Member IO r
-          , SafeForRegion Handle r
-          , Member (Exc SomeException) r
-          )
-       => (forall s. Eff (RegionEff Handle (L (Length r) s) ': r) a)
-       -> Eff r a
-region = handleRegionRelay (send . uncurry openFile) (send . close) handler
+------------------------------------------------------------------------------
+-- | Example region for acquiring file 'Handle's.
+fileHandleRegion :: forall r a
+                  . ( Member IO r
+                    , SafeForRegion Handle r
+                    , Member (Exc SomeException) r
+                    )
+                 => (forall s. Eff (RegionEff Handle (L (Length r) s) ': r) a)
+                 -> Eff r a
+fileHandleRegion = handleRegionRelay (send . uncurry openFile) (send . close) handler
   where
     close :: Handle -> IO ()
     close fh = do
@@ -178,20 +232,18 @@ region = handleRegionRelay (send . uncurry openFile) (send . close) handler
         Nothing -> ignore u
 
 
--- test :: Eff '[Exc SomeException, IO] String
--- test = region $ do
---         _ <- acquire @Handle ("hello", ReadMode)
---         return "hello"
+------------------------------------------------------------------------------
+-- | Type alias to describe that 's' is a region currently in scope.
+type ActiveRegion res s r = Member (RegionEff res s) r
 
 
-
-
-type ActiveRegion res s r = (Member (RegionEff res s) r)
-
+------------------------------------------------------------------------------
+-- | Transfer ownership of a resource to a parent region. Useful for resources
+-- with conditional lifetimes.
 give :: ( ActiveRegion res s r
         , ActiveRegion res s' r
         , s' ~ Ancestor n r
-        , s ~ L n1 e1
+        , s  ~ L n1 e1
         , s' ~ L n2 e2
         , n2 <= n1
         )
