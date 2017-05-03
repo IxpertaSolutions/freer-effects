@@ -21,6 +21,7 @@ module Control.Monad.Freer.Resource
   , catchNothing
   , acquire
   , acquire'
+  , handleRegionRelay
   , fileHandleRegion
   , give
   , thisRegion
