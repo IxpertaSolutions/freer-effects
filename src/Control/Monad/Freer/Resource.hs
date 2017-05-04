@@ -15,8 +15,8 @@
 
 module Control.Monad.Freer.Resource
   ( SafeForRegion
-  , Resource (..)
-  , HiddenResource
+  , Resource ()
+  , unsafeWithResource
   , ResourceCtor
   , catchNothing
   , acquire
@@ -55,19 +55,19 @@ instance SafeForRegion Handle '[IO]
 
 
 ------------------------------------------------------------------------------
--- | A data family that should always be a newtype over 'res', but the
--- constructors should never be exported. This type exists in order to hide the
--- internals of a resource from end-users, but allow library authors to get
--- a handle on their resources.
-data family HiddenResource res
+-- | A wrapper around a 'res', with an eigenvariable to prevent this type from
+-- exiting the region its lifetime is scoped by.
+newtype Resource res s = Resource res
 
 
 ------------------------------------------------------------------------------
--- | A wrapper around a 'res', with an eigenvariable to prevent this type from
--- exiting the region its lifetime is scoped by.
-newtype Resource res s = Resource
-  { getHiddenResource :: HiddenResource res
-  }
+-- | Helper function to allow library writers to work with 'Resource's. End
+-- users must never use this function, as its misuse can leak resources from
+-- their scoping regions.
+--
+-- TODO(sandy): how can we existentialize 'res' so it can't escape?
+unsafeWithResource :: Resource res s -> (forall b. (res ~ b) => b -> a) -> a
+unsafeWithResource (Resource r) f = f r
 
 
 ------------------------------------------------------------------------------
@@ -75,9 +75,6 @@ newtype Resource res s = Resource
 -- acquire a 'res'.
 type family ResourceCtor res
 
-newtype instance HiddenResource Handle = HandleResource
-  { unHandleResource :: Handle
-  } deriving Eq
 type instance ResourceCtor Handle = (FilePath, IOMode)
 
 
@@ -158,12 +155,12 @@ data L (n :: Nat) k
 -- | Helper function to build region constructs for resources of type 'res'.
 handleRegionRelay :: forall res effs a
                    . ( SafeForRegion res effs
-                     , Eq (HiddenResource res)
+                     , Eq res
                      )
                   => -- | Strategy to acquire a 'res'.
-                     (ResourceCtor res -> Eff effs (HiddenResource res))
+                     (ResourceCtor res -> Eff effs res)
                      -- | Strategy to release a 'res'.
-                  -> (HiddenResource res -> Eff effs ())
+                  -> (res -> Eff effs ())
                      -- | Strategy for catching other effects.
                   -> (forall (b :: *)
                          . -- | Action to release all resources.
@@ -181,9 +178,7 @@ handleRegionRelay acquireM releaseM catchM = loop []
   where
     releaseAll = mapM_ releaseM
 
-    loop :: [HiddenResource res]
-         -> Eff (RegionEff res (L (Length effs) s) ': effs) a
-         -> Eff effs a
+    loop :: [res] -> Eff (RegionEff res (L (Length effs) s) ': effs) a -> Eff effs a
     loop rs (Val x) = releaseAll rs >> return x
     loop rs (E u q) =
       case decomp u of
@@ -224,9 +219,7 @@ fileHandleRegion :: forall r a
                     )
                  => (forall s. Eff (RegionEff Handle (L (Length r) s) ': r) a)
                  -> Eff r a
-fileHandleRegion = handleRegionRelay (send . fmap HandleResource . uncurry openFile)
-                                     (send . close . unHandleResource)
-                                     handler
+fileHandleRegion = handleRegionRelay (send . uncurry openFile) (send . close) handler
   where
     close :: Handle -> IO ()
     close fh = do
