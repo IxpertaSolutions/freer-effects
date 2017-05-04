@@ -16,28 +16,27 @@
 module Control.Monad.Freer.Resource
   ( SafeForRegion
   , Resource ()
+  , Region
+  , RegionEff ()
+  , Ancestor
   , unsafeWithResource
   , ResourceCtor
   , catchNothing
   , acquire
   , acquire'
   , handleRegionRelay
-  , fileHandleRegion
   , give
   , thisRegion
   , parentRegion
   , gparentRegion
   ) where
 
-import Control.Exception (SomeException, catch)
 import Control.Monad.Freer
-import Control.Monad.Freer.Exception (Exc (..), throwError)
-import Control.Monad.Freer.Internal (Union, Eff (..), qComp, tsingleton, prj, decomp)
+import Control.Monad.Freer.Internal (Union, Eff (..), qComp, tsingleton, decomp)
 import Data.Bool (bool)
 import Data.List (delete)
 import Data.Proxy (Proxy (..))
 import GHC.TypeLits (Nat, type (+), type (-), type (<=))
-import System.IO
 
 
 ------------------------------------------------------------------------------
@@ -47,11 +46,6 @@ class SafeForRegion res (r :: [* -> *])
 
 instance SafeForRegion res '[]
 instance SafeForRegion res r => SafeForRegion res (RegionEff res s ': r)
-
-instance SafeForRegion Handle r => SafeForRegion Handle (Exc SomeException ': r)
-instance SafeForRegion Handle '[IO]
--- instance SafeForRegion r => SafeForRegion (Reader a ': r)
--- instance SafeForRegion r => SafeForRegion (State a ': r)
 
 
 ------------------------------------------------------------------------------
@@ -74,8 +68,6 @@ unsafeWithResource (Resource r) f = f r
 -- | Type family for describing the data necessary to construct a request to
 -- acquire a 'res'.
 type family ResourceCtor res
-
-type instance ResourceCtor Handle = (FilePath, IOMode)
 
 
 ------------------------------------------------------------------------------
@@ -152,6 +144,11 @@ data L (n :: Nat) k
 
 
 ------------------------------------------------------------------------------
+-- | Type alias for describing 'Region's.
+type Region res effs a = forall s. Eff (RegionEff res (L (Length effs) s) ': effs) a
+
+
+------------------------------------------------------------------------------
 -- | Helper function to build region constructs for resources of type 'res'.
 handleRegionRelay :: forall res effs a
                    . ( SafeForRegion res effs
@@ -172,7 +169,7 @@ handleRegionRelay :: forall res effs a
                         -> Eff effs a
                      )
                      -- | A region in which we can allocate 'res's.
-                  -> (forall s. Eff (RegionEff res (L (Length effs) s) ': effs) a)
+                  -> Region res effs a
                   -> Eff effs a
 handleRegionRelay acquireM releaseM catchM = loop []
   where
@@ -208,29 +205,6 @@ catchNothing :: Eff effs ()
              -> Union effs b
              -> Eff effs a
 catchNothing = const id
-
-
-------------------------------------------------------------------------------
--- | Example region for acquiring file 'Handle's.
-fileHandleRegion :: forall r a
-                  . ( Member IO r
-                    , SafeForRegion Handle r
-                    , Member (Exc SomeException) r
-                    )
-                 => (forall s. Eff (RegionEff Handle (L (Length r) s) ': r) a)
-                 -> Eff r a
-fileHandleRegion = handleRegionRelay (send . uncurry openFile) (send . close) handler
-  where
-    close :: Handle -> IO ()
-    close fh = do
-      hPutStrLn stderr $ "Closing " ++ show fh
-      catch (hClose fh) (\(e::SomeException) ->
-                          hPutStrLn stderr ("Error on close: " ++ show e))
-
-    handler releaseAll ignore u =
-      case prj u of
-        Just (Exc e) -> releaseAll >> throwError (e :: SomeException)
-        Nothing -> ignore u
 
 
 ------------------------------------------------------------------------------
