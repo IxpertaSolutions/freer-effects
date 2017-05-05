@@ -22,6 +22,7 @@ module Control.Monad.Freer.Resource
   , unsafeWithResource
   , ResourceCtor
   , catchNothing
+  , catchSafeIOExcs
   , acquire
   , acquire'
   , handleRegionRelay
@@ -31,8 +32,10 @@ module Control.Monad.Freer.Resource
   , gparentRegion
   ) where
 
+import Control.Exception (SomeException)
 import Control.Monad.Freer
-import Control.Monad.Freer.Internal (Union, Eff (..), qComp, tsingleton, decomp)
+import Control.Monad.Freer.Internal (Union, Eff (..), qComp, tsingleton, decomp, prj)
+import Control.Monad.Freer.Exception (Exc (..), throwError)
 import Data.Bool (bool)
 import Data.List (delete)
 import Data.Proxy (Proxy (..))
@@ -205,6 +208,20 @@ catchNothing :: Eff effs ()
              -> Union effs b
              -> Eff effs a
 catchNothing = const id
+
+
+------------------------------------------------------------------------------
+-- | Combinator to be used with 'handleRegionRelay' to catch IO exceptions.
+catchSafeIOExcs :: forall (b :: *) effs a
+                 . Member (Exc SomeException) effs
+                => Eff effs ()
+                -> (Union effs b -> Eff effs a)
+                -> Union effs b
+                -> Eff effs a
+catchSafeIOExcs releaseAll ignore u =
+  case prj u of
+    Just (Exc e) -> releaseAll >> throwError (e :: SomeException)
+    Nothing      -> ignore u
 
 
 ------------------------------------------------------------------------------
