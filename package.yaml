@@ -73,6 +73,7 @@ library:
     - Control.Monad.Freer.Internal
     - Control.Monad.Freer.NonDet
     - Control.Monad.Freer.Reader
+    - Control.Monad.Freer.SafeIO
     - Control.Monad.Freer.State
     - Control.Monad.Freer.StateRW
     - Control.Monad.Freer.Trace
