@@ -55,13 +55,13 @@ flag test-hlint
 library
   hs-source-dirs:
       src
-  ghc-options: -Wall -fwarn-tabs
+  ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude
   build-depends:
       base >=4.7 && <5
   if flag(pedantic)
     ghc-options: -Werror
   if impl(ghc >=8)
-    ghc-options: -Wredundant-constraints
+    ghc-options: -Wredundant-constraints -Wmissing-import-lists
   if impl(ghc >=7.10)
     cpp-options: -DDEPRECATED_LANGUAGE_OVERLAPPING_INSTANCES
   exposed-modules:
@@ -73,6 +73,8 @@ library
       Control.Monad.Freer.Internal
       Control.Monad.Freer.NonDet
       Control.Monad.Freer.Reader
+      Control.Monad.Freer.Region
+      Control.Monad.Freer.SafeIO
       Control.Monad.Freer.State
       Control.Monad.Freer.StateRW
       Control.Monad.Freer.Trace
@@ -81,8 +83,6 @@ library
       Data.OpenUnion
       Data.OpenUnion.Internal
   other-modules:
-      Control.Monad.Freer.Resource
-      Control.Monad.Freer.SafeIO
       Paths_freer_effects
   default-language: Haskell2010
 
@@ -90,14 +90,14 @@ executable freer-examples
   main-is: Main.hs
   hs-source-dirs:
       examples/src
-  ghc-options: -Wall -fwarn-tabs
+  ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude
   build-depends:
       base >=4.7 && <5
     , freer-effects
   if flag(pedantic)
     ghc-options: -Werror
   if impl(ghc >=8)
-    ghc-options: -Wredundant-constraints
+    ghc-options: -Wredundant-constraints -Wmissing-import-lists
   other-modules:
       Capitalize
       Console
@@ -114,13 +114,13 @@ test-suite hlint
   main-is: hlint.hs
   hs-source-dirs:
       tests
-  ghc-options: -Wall -fwarn-tabs -threaded -with-rtsopts=-N
+  ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude -threaded -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
   if flag(pedantic)
     ghc-options: -Werror
   if impl(ghc >=8)
-    ghc-options: -Wredundant-constraints
+    ghc-options: -Wredundant-constraints -Wmissing-import-lists
   if flag(test-hlint)
     build-depends:
         hlint >=1.9
@@ -134,7 +134,7 @@ test-suite unit
   main-is: Tests.hs
   hs-source-dirs:
       tests
-  ghc-options: -Wall -fwarn-tabs
+  ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude
   build-depends:
       base >=4.7 && <5
     , QuickCheck
@@ -145,7 +145,7 @@ test-suite unit
   if flag(pedantic)
     ghc-options: -Werror
   if impl(ghc >=8)
-    ghc-options: -Wredundant-constraints
+    ghc-options: -Wredundant-constraints -Wmissing-import-lists
   other-modules:
       Tests.Coroutine
       Tests.Exception
@@ -161,7 +161,7 @@ benchmark core
   main-is: Core.hs
   hs-source-dirs:
       bench
-  ghc-options: -Wall -fwarn-tabs -O2
+  ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude -O2
   build-depends:
       base >=4.7 && <5
     , criterion
@@ -172,5 +172,5 @@ benchmark core
   if flag(pedantic)
     ghc-options: -Werror
   if impl(ghc >=8)
-    ghc-options: -Wredundant-constraints
+    ghc-options: -Wredundant-constraints -Wmissing-import-lists
   default-language: Haskell2010
