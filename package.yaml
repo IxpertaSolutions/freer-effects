@@ -52,10 +52,12 @@ when:
       # Introduced in GHC 8.
       - -Wredundant-constraints
       # Older Cabal generates warnings with its Paths_* module.
+      - -Wmissing-import-lists
 
 ghc-options:
   - -Wall
   - -fwarn-tabs
+  - -fwarn-implicit-prelude
 
 dependencies:
   - base >=4.7 && <5
@@ -71,6 +73,8 @@ library:
     - Control.Monad.Freer.Internal
     - Control.Monad.Freer.NonDet
     - Control.Monad.Freer.Reader
+    - Control.Monad.Freer.Region
+    - Control.Monad.Freer.SafeIO
     - Control.Monad.Freer.State
     - Control.Monad.Freer.StateRW
     - Control.Monad.Freer.Trace

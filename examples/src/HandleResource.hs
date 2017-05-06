@@ -16,7 +16,7 @@ import           Control.Exception (SomeException)
 import           Control.Monad.Freer (Member, Eff ())
 import           Control.Monad.Freer.Exception (Exc (..))
 import           Control.Monad.Freer.SafeIO (SIO, safeIO)
-import           Control.Monad.Freer.Resource (handleRegionRelay, catchSafeIOExcs, Ancestor, ResourceCtor, SafeForRegion, Resource, RegionEff, Region, unsafeWithResource, acquire)
+import           Control.Monad.Freer.Region (handleRegionRelay, catchSafeIOExcs, Ancestor, ResourceCtor, SafeForRegion, Resource, RegionEff, Region, unsafeWithResource, acquire)
 import           System.IO (Handle)
 import qualified System.IO as IO
 

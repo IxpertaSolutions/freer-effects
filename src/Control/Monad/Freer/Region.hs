@@ -13,7 +13,7 @@
 {-# LANGUAGE UndecidableInstances               #-}
 {-# OPTIONS_GHC -fno-warn-redundant-constraints #-}
 
-module Control.Monad.Freer.Resource
+module Control.Monad.Freer.Region
   ( SafeForRegion
   , Resource ()
   , Region

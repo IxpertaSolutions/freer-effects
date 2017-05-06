@@ -15,7 +15,7 @@ module Region where
 
 import           Control.Exception
 import           Control.Monad.Freer
-import           Control.Monad.Freer.Resource
+import           Control.Monad.Freer.Region
 import           Control.Monad.Freer.SafeIO
 import           Control.Monad.Freer.Exception (Exc (..))
 
