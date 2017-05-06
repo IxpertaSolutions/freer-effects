@@ -33,7 +33,7 @@ module Control.Monad.Freer.Resource
   ) where
 
 import Control.Exception (SomeException)
-import Control.Monad.Freer
+import Control.Monad.Freer (Member, send)
 import Control.Monad.Freer.Internal (Union, Eff (..), qComp, tsingleton, decomp, prj)
 import Control.Monad.Freer.Exception (Exc (..), throwError)
 import Data.Bool (bool)
@@ -61,9 +61,7 @@ newtype Resource res s = Resource res
 -- | Helper function to allow library writers to work with 'Resource's. End
 -- users must never use this function, as its misuse can leak resources from
 -- their scoping regions.
---
--- TODO(sandy): how can we existentialize 'res' so it can't escape?
-unsafeWithResource :: Resource res s -> (forall b. (res ~ b) => b -> a) -> a
+unsafeWithResource :: Resource res s -> (res -> a) -> a
 unsafeWithResource (Resource r) f = f r
 
 
