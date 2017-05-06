@@ -171,6 +171,10 @@ run _       = error "Internal:run - This (E) should never happen"
 -- | Runs a set of Effects. Requires that all effects are consumed, except for
 -- a single effect known to be a monad. The value returned is a computation in
 -- that monad. This is useful for plugging in traditional transformer stacks.
+--
+-- Note that if the monad is 'IO', you should consider using
+-- 'Control.Monad.Freer.SafeIO.runSafeIO' instead, as it provides the ability
+-- to catch and recover from IO exceptions in 'Eff' code.
 runM :: Monad m => Eff '[m] a -> m a
 runM (Val x) = return x
 runM (E u q) = case extract u of

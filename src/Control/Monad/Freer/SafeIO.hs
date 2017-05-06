@@ -9,10 +9,10 @@ module Control.Monad.Freer.SafeIO
   , safeIO
   ) where
 
-import Control.Monad.Freer
-import Control.Monad.Freer.Internal
-import Control.Monad.Freer.Exception
-import Control.Exception
+import Control.Monad.Freer (send, Member)
+import Control.Monad.Freer.Internal (qApp, prj, Eff (..))
+import Control.Monad.Freer.Exception (Exc (..), throwError)
+import Control.Exception (throw, SomeException, try)
 
 
 ------------------------------------------------------------------------------
