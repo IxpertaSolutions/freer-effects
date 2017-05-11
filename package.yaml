@@ -52,15 +52,16 @@ when:
       # Introduced in GHC 8.
       - -Wredundant-constraints
       # Older Cabal generates warnings with its Paths_* module.
-      - -Wmissing-import-lists
 
 ghc-options:
   - -Wall
   - -fwarn-tabs
-  - -fwarn-implicit-prelude
 
 dependencies:
   - base >=4.7 && <5
+  - monad-control
+  - transformers-base
+  - lifted-base
 
 library:
   source-dirs: src
