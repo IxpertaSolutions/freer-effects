@@ -38,14 +38,13 @@ module Control.Monad.Freer.Trace
     )
   where
 
-import Control.Monad ((>>=), return)
-import Data.Either (Either(Left, Right))
+import Control.Applicative (pure)
+import Control.Monad ((>>=))
 import Data.Function ((.), const)
 import Data.String (String)
 import System.IO (IO, hPutStrLn, stderr)
 
-import Control.Monad.Freer.Internal
-    (Eff(E, Val), Member, decomp, qApp, send, tsingleton)
+import Control.Monad.Freer.Internal (Arr, Eff, Member, handleRelay, send)
 
 
 -- | A Trace effect.
@@ -58,13 +57,14 @@ trace = send . Trace
 
 -- | Generic handler for 'Trace' effect.
 runTrace
-    :: (s -> Eff effs ())
-    -- ^ Function to trace @s@ in terms of effect stack with 'Trace' popped.
-    -> Eff (Trace s ': effs) a -> Eff effs a
-runTrace _ (Val x) = return x
-runTrace f (E u q) = case decomp u of
-    Right (Trace s) -> f s >>= runTrace f . qApp q
-    Left u' -> E u' (tsingleton (runTrace f . qApp q))
+   :: forall s effs a
+   .  (s -> Eff effs ())
+   -- ^ Function to trace @s@ in terms of effect stack with 'Trace' popped.
+   -> Eff (Trace s ': effs) a -> Eff effs a
+runTrace f = handleRelay pure handle
+  where
+    handle :: Trace s v -> Arr effs v a -> Eff effs a
+    handle (Trace s) = (f s >>=)
 
 -- | Simple handler for 'Trace' 'String' that just writes it to stdout.
 runTraceIO :: Member IO effs => Eff (Trace String ': effs) a -> Eff effs a
@@ -79,7 +79,7 @@ runTraceSilent
 runTraceSilent p = runTrace (f p)
   where
     f :: proxy s -> s -> Eff effs ()
-    f _ = const (return ())
+    f _ = const (pure ())
 
 -- $simpleLoggingFacility
 --
