@@ -29,6 +29,9 @@ All notable changes to this project will be documented in this file.
 * Introduced `raise` to weaken an effect stack.
   [PR #41](https://github.com/IxpertaSolutions/freer-effects/pull/41)
   (**new**)
+* Generalized `Trace` effect.
+  [PR #30](https://github.com/IxpertaSolutions/freer-effects/pull/30)
+  (**breaking-change**)
 
 ## [0.3.0.1] (April 16, 2017)
 

@@ -18,10 +18,11 @@ import Control.Monad.Freer (run)
 import qualified Tests.Coroutine (tests)
 import qualified Tests.Exception (tests)
 import qualified Tests.Fresh (tests)
+import qualified Tests.Loop (tests)
 import qualified Tests.NonDet (tests)
 import qualified Tests.Reader (tests)
 import qualified Tests.State (tests)
-import qualified Tests.Loop (tests)
+import qualified Tests.Trace (tests)
 
 
 --------------------------------------------------------------------------------
@@ -49,4 +50,5 @@ main = defaultMain $ testGroup "Tests"
     , Tests.Reader.tests
     , Tests.State.tests
     , Tests.Loop.tests
+    , Tests.Trace.tests
     ]
