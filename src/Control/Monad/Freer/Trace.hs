@@ -20,15 +20,16 @@ module Control.Monad.Freer.Trace
     ( Trace(..)
     , trace
     , runTrace
+    , handleTrace
     )
   where
 
-import Control.Monad ((>>), return)
+import Control.Monad ((>>),(>>=), return)
 import Data.Function ((.))
 import Data.String (String)
 import System.IO (IO, putStrLn)
 
-import Control.Monad.Freer.Internal (Eff(E, Val), Member, extract, qApp, send)
+import Control.Monad.Freer.Internal (Eff(E, Val), Member, extract, qApp, send, handleRelay)
 
 
 -- | A Trace effect; takes a 'String' and performs output.
@@ -44,3 +45,10 @@ runTrace :: Eff '[Trace] a -> IO a
 runTrace (Val x) = return x
 runTrace (E u q) = case extract u of
     Trace s -> putStrLn s >> runTrace (qApp q ())
+
+
+-- | Handle trace messages using another effect, such as IO
+--
+-- > runM . handleTrace putStrLn == runTrace
+handleTrace :: (Member m effs) => (String -> m ()) -> Eff (Trace ': effs) a -> Eff effs a
+handleTrace f = handleRelay return (\(Trace s) k -> send (f s) >>= k)
