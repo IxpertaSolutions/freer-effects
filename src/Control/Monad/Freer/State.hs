@@ -4,6 +4,7 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE RankNTypes #-}
 -- |
 -- Module:       Control.Monad.Freer.State
 -- Description:  State effects, for state-carrying computations.
@@ -32,6 +33,7 @@ module Control.Monad.Freer.State
     , get
     , put
     , modify
+    , modify'
 
     -- * State Handlers
     , runState
@@ -40,15 +42,18 @@ module Control.Monad.Freer.State
 
     -- * State Utilities
     , transactionState
+    , handleState
     )
   where
 
-import Control.Monad ((>>), (>>=), return)
+import Control.Monad ((>>), (>>=), return, void)
 import Data.Either (Either(Left, Right))
-import Data.Functor ((<$>), fmap)
+import Data.Functor ((<$>))
 import Data.Maybe (Maybe(Just))
 import Data.Proxy (Proxy)
 import Data.Tuple (fst, snd)
+import Data.Function (($),(.))
+
 
 import Control.Monad.Freer.Internal
     ( Eff(E, Val)
@@ -60,6 +65,8 @@ import Control.Monad.Freer.Internal
     , qComp
     , send
     , tsingleton
+    , handleRelay
+    , send
     )
 
 
@@ -67,10 +74,13 @@ import Control.Monad.Freer.Internal
                          -- State, strict --
 --------------------------------------------------------------------------------
 
--- | Strict 'State' effects: one can either 'Get' values or 'Put' them.
+-- | Strict 'State' effects: one can either 'Get' values, 'Put' them, or 'Modify' them.
+--
+-- The inclusion of Modify allows for atomic modification when using 'handleState'.
 data State s a where
     Get :: State s s
     Put :: !s -> State s ()
+    Modify :: (s -> (s,a)) -> State s (s,a)
 
 -- | Retrieve the current value of the state of type @s :: *@.
 get :: Member (State s) effs => Eff effs s
@@ -83,7 +93,14 @@ put s = send (Put s)
 -- | Modify the current state of type @s :: *@ using provided function
 -- @(s -> s)@.
 modify :: Member (State s) effs => (s -> s) -> Eff effs ()
-modify f = fmap f get >>= put
+modify f = void . send . Modify $ \s -> (f s,())
+
+-- | Atomically modify the current state of type @s :: *@ using
+-- provided function @(s -> (s,b))@ returning the new state and
+-- an associated value.
+modify' :: Member (State s) effs => (s -> (s,b)) -> Eff effs (s,b)
+modify' f = send (Modify f)
+
 
 -- | Handler for 'State' effects.
 runState :: Eff (State s ': effs) a -> s -> Eff effs (a, s)
@@ -91,6 +108,7 @@ runState (Val x) s = return (x, s)
 runState (E u q) s = case decomp u of
     Right Get      -> runState (qApp q s) s
     Right (Put s') -> runState (qApp q ()) s'
+    Right (Modify f) -> let res@(s',_) = f s in runState (qApp q res) s'
     Left  u'       -> E u' (tsingleton (\x -> runState (qApp q x) s))
 
 -- | Run a 'State' effect, returning only the final state.
@@ -116,4 +134,26 @@ transactionState _ m = do s <- get; loop s m
     loop s (E (u :: Union r b) q) = case prj u :: Maybe (State s b) of
         Just Get      -> loop s (qApp q s)
         Just (Put s') -> loop s'(qApp q ())
+        Just (Modify f) -> let res@(s',_) = f s in loop s' (qApp q res)
         _             -> E u (tsingleton k) where k = qComp q (loop s)
+
+-- | Provide explicit state handlers in terms of another effect, such as IO.
+--
+-- For example, you can turn a stateful computation into one which works on shared
+-- state concurrently.
+--
+-- @
+-- main = do
+--     ref <- newIORef True
+--     let getRef = readIORef ref
+--         setRef = writeIORef ref
+--         modRef = atomicModifyIORef ref
+--     forkIO $ runM . handleState getRef setRef modRef $ statefulComputation1
+--     runM . handleState getRef setRef modRef $ statefulComputation2
+-- @
+handleState :: Member m effs => m s -> (s -> m ()) -> (forall b. (s -> (s,b)) -> m (s,b)) -> Eff (State s ': effs) a -> Eff effs a
+handleState gt st md = handleRelay return (\x k -> case x of
+    Get      -> send gt     >>= k
+    Put s    -> send (st s) >>= k
+    Modify f -> send (md f) >>= k
+    )

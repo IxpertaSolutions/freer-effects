@@ -21,10 +21,12 @@ module Control.Monad.Freer.Writer
     ( Writer(..)
     , tell
     , runWriter
+    , handleWriter
+    , ignoreWriter
     )
   where
 
-import Control.Applicative (pure)
+import Control.Applicative (pure,(*>))
 import Control.Arrow (second)
 import Data.Function (($))
 import Data.Functor ((<$>))
@@ -45,3 +47,28 @@ tell w = send $ Writer w
 runWriter :: Monoid w => Eff (Writer w ': effs) a -> Eff effs (a, w)
 runWriter = handleRelay (\a -> pure (a, mempty)) $ \(Writer w) k ->
     second (w <>) <$> k ()
+
+-- | Process written values as they happen - useful for logging while interpreting an
+-- application instead of gathering all values:
+-- 
+-- >  handleWriter print :: (Member IO effs, Show a) => Eff (Writer a ': effs) b -> Eff effs b
+--
+-- This allows for multiple writers to be handled differently:
+--
+-- @
+-- newtype Debug = Debug String
+-- newtype Info  = Info String
+--
+-- ignoreDebug :: Member IO effs => Eff (Writer Debug : effs) a -> Eff effs a
+-- ignoreDebug = handleWriter (const (pure ()))
+--
+-- printInfo :: Member IO effs => Eff (Writer Info : effs) a -> Eff effs a
+-- printInfo = handleWriter (\(Info s) -> putStrLn s)
+-- @
+
+handleWriter :: (Member m effs) => (w -> m b) -> Eff (Writer w ': effs) a -> Eff effs a
+handleWriter prnt = handleRelay pure (\(Writer w) k -> send (prnt w) *> k ())
+
+-- | Ignore written values of a particular type.
+ignoreWriter :: proxy w -> Eff (Writer w ': effs) a -> Eff effs a
+ignoreWriter _ = handleRelay pure (\(Writer _) k -> k ())
