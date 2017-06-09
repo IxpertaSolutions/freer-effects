@@ -24,7 +24,7 @@ module Control.Monad.Freer.Trace
     )
   where
 
-import Control.Monad ((>>), return)
+import Control.Monad ((>>),(>>=), return)
 import Data.Function ((.))
 import Data.String (String)
 import System.IO (IO, putStrLn)
@@ -51,4 +51,4 @@ runTrace (E u q) = case extract u of
 --
 -- > runM . handleTrace putStrLn == runTrace
 handleTrace :: (Member m effs) => (String -> m ()) -> Eff (Trace ': effs) a -> Eff effs a
-handleTrace f = handleRelay return (\(Trace s) k -> send (f s) >> k ())
+handleTrace f = handleRelay return (\(Trace s) k -> send (f s) >>= k)
