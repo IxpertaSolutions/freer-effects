@@ -103,6 +103,7 @@ tests:
       - tasty
       - tasty-hunit
       - tasty-quickcheck
+    ghc-options: -with-rtsopts=-K1K
 
   hlint:
     source-dirs: tests
