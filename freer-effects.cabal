@@ -130,7 +130,7 @@ test-suite unit
   main-is: Tests.hs
   hs-source-dirs:
       tests
-  ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude
+  ghc-options: -Wall -fwarn-tabs -fwarn-implicit-prelude -with-rtsopts=-K1K
   build-depends:
       base >=4.7 && <5
     , QuickCheck
