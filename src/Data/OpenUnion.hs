@@ -11,6 +11,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE Trustworthy #-}
 -- |
 -- Module:       Data.OpenUnion
 -- Description:  Open unions (type-indexed co-products) for extensible effects.
