@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE Safe #-}
 -- |
 -- Module:       Control.Monad.Freer.Coroutine
 -- Description:  Composable coroutine effects layer.

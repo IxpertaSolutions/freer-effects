@@ -4,6 +4,7 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE Safe #-}
 -- |
 -- Module:       Control.Monad.Freer.Reader
 -- Description:  Reader effects, for encapsulating an environment.

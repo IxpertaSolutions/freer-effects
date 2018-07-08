@@ -3,6 +3,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE Safe #-}
 -- |
 -- Module:       Control.Monad.Freer.Writer
 -- Description:  Composable Writer effects.

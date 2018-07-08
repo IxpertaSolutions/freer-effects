@@ -2,6 +2,7 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE Safe #-}
 -- |
 -- Module:       Control.Monad.Freer
 -- Description:  Freer - an extensible effects library
